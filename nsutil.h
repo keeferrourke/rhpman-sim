@@ -19,10 +19,32 @@
 #define __nsutil_h
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <utility>
 
+#include "ns3/aodv-helper.h"
+#include "ns3/dsdv-helper.h"
+#include "ns3/ipv4-routing-helper.h"
 #include "ns3/random-walk-2d-mobility-model.h"
+
+namespace rhpman {
+
+using namespace ns3;
+
+enum class RoutingType { DSDV, AODV, UNKNOWN };
+
+inline RoutingType getRoutingType(std:: string str) {
+  std::string lower = str;
+  std::transform(str.begin(), str.end(), lower.begin(), ::tolower);
+  if (lower == "dsdv") {
+    return RoutingType::DSDV;
+  }
+  if (lower == "aodv") {
+    return RoutingType::AODV;
+  }
+  return RoutingType::UNKNOWN;
+}
 
 /// @brief Parses a RandomWalk2dMobilityModel::Mode from a string.
 ///
@@ -44,5 +66,7 @@ inline std::pair<ns3::RandomWalk2dMobilityModel::Mode, bool> getWalkMode(std::st
   }
   return result;
 }
+
+};  // namespace rhpman
 
 #endif

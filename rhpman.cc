@@ -20,10 +20,17 @@
 #include <sysexits.h>
 
 #include "ns3/animation-interface.h"
+#include "ns3/aodv-helper.h"
 #include "ns3/command-line.h"
 #include "ns3/config.h"
 #include "ns3/core-module.h"
 #include "ns3/double.h"
+#include "ns3/dsdv-helper.h"
+#include "ns3/internet-stack-helper.h"
+#include "ns3/ipv4-address-helper.h"
+#include "ns3/ipv4-interface-container.h"
+#include "ns3/ipv4-routing-helper.h"
+#include "ns3/ipv6-address-helper.h"
 #include "ns3/log-macros-enabled.h"
 #include "ns3/mobility-helper.h"
 #include "ns3/mobility-model.h"
@@ -34,6 +41,9 @@
 #include "ns3/random-variable-stream.h"
 #include "ns3/random-walk-2d-mobility-model.h"
 
+#include "ns3/wifi-phy.h"
+#include "ns3/wifi-standards.h"
+#include "ns3/yans-wifi-helper.h"
 #include "nsutil.h"
 #include "rhpman.h"
 #include "simulation-area.h"
@@ -76,9 +86,14 @@ int main(int argc, char* argv[]) {
   double optPbnVelocityMax = 1.0_meters;
   double optPbnVelocityChangeAfter = 100.0_seconds;
 
+  // Link and network parameters.
+  std::string optRoutingProtocol = "dsdv";
+  double optWifiRadius = 100.0_meters;
+
   // Animation parameters.
   std::string animationTraceFilename = "rhpman.xml";
 
+  // Setup and parse the command line options.
   CommandLine cmd;
   cmd.AddValue("run-time", "Simulation run time in seconds", optRuntime);
   cmd.AddValue("total-nodes", "Total number of nodes in the simulation", optTotalNodes);
@@ -115,12 +130,14 @@ int main(int argc, char* argv[]) {
       "pbn-velocity-change-after",
       "Number of seconds after which each partition-bound node should change velocity",
       optPbnVelocityChangeAfter);
+  cmd.AddValue("routing", "One of either 'DSDV' or 'AODV'", optRoutingProtocol);
+  cmd.AddValue("wifi-radius", "The radius of connectivity for each node in meters", optWifiRadius);
   cmd.AddValue("animation-xml", "Output file path for NetAnim trace file", animationTraceFilename);
   cmd.Parse(argc, argv);
 
-  auto result = getWalkMode(optTravellerWalkMode);
-  auto traveller_walk_mode = result.first;
-  if (!result.second) {
+  auto walkModeResult = getWalkMode(optTravellerWalkMode);
+  auto travellerWalkMode = walkModeResult.first;
+  if (!walkModeResult.second) {
     NS_LOG_ERROR("Unrecognized walk mode '" + optTravellerWalkMode + "'.");
     return EX_USAGE;
   }
@@ -128,7 +145,15 @@ int main(int argc, char* argv[]) {
     optTravellerWalkDistance = std::min(optAreaWidth, optAreaLength);
   }
 
-  // Set up the travellers.
+  RoutingType routingType = getRoutingType(optRoutingProtocol);
+  if (routingType == RoutingType::UNKNOWN) {
+    NS_LOG_ERROR("Unrecognized routing type '" + optRoutingProtocol + "'.");
+    return EX_USAGE;
+  }
+
+  NodeContainer allAdHocNodes;
+
+  NS_LOG_UNCOND("Setting up traveller node mobility models...");
   // Travellers can move across the whole simulation space.
   int32_t num_travellers = optTotalNodes - (optNodesPerPartition * (optRows * optCols));
   NodeContainer travellers;
@@ -154,19 +179,22 @@ int main(int argc, char* argv[]) {
       "Time",
       TimeValue(Seconds(optTravellerWalkTime)),
       "Mode",
-      EnumValue(traveller_walk_mode));
+      EnumValue(travellerWalkMode));
 
   travellerMobilityHelper.Install(travellers);
 
+  allAdHocNodes.Add(travellers);
+
   // Set up the partition-bound nodes.
   // Partition-bound nodes can only move within their grid.
+  NS_LOG_UNCOND("Setting up partition-bound node mobility models...");
   auto partitions = area.splitIntoGrid(optRows, optCols);
 
-  std::vector<NodeContainer> partitionBoundGroups(partitions.size());
+  std::vector<NodeContainer> pbnGroups(partitions.size());
   for (size_t i = 0; i < partitions.size(); i++) {
     auto partition = partitions[i];
-    auto nodes = partitionBoundGroups[i];
-    nodes.Create(optNodesPerPartition);
+    auto nodeContainer = pbnGroups[i];
+    nodeContainer.Create(optNodesPerPartition);
     MobilityHelper mobilityHelper;
     Ptr<UniformRandomVariable> velocityGenerator = CreateObject<UniformRandomVariable>();
     velocityGenerator->SetAttribute("Min", DoubleValue(optPbnVelocityMin));
@@ -185,8 +213,54 @@ int main(int argc, char* argv[]) {
         DoubleValue(distance),
         "Time",
         TimeValue(Seconds(optPbnVelocityChangeAfter)));
-    mobilityHelper.Install(nodes);
+    mobilityHelper.Install(nodeContainer);
+
+    allAdHocNodes.Add(nodeContainer);
   }
+
+  NS_LOG_UNCOND("Setting up wireless devices for all nodes...");
+
+  YansWifiPhyHelper wifiPhy = YansWifiPhyHelper::Default();
+  wifiPhy.SetPcapDataLinkType(YansWifiPhyHelper::DLT_IEEE802_11_RADIO);
+
+  auto wifiChannel = YansWifiChannelHelper::Default();
+  wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+
+  // Shi and Chen refer to a 100m radius of connectivity for each node.
+  // They do not assume any propagation loss model, so we use a constant
+  // propagation loss model which amounts to having connectivity withing the
+  // radius, and having no connectivity outside the radius.
+  wifiChannel
+      .AddPropagationLoss("ns3::RangePropagationLossModel", "MaxRange", DoubleValue(optWifiRadius));
+
+  wifiPhy.SetChannel(wifiChannel.Create());
+
+  WifiMacHelper wifiMac;
+  wifiMac.SetType("ns3::AdhocWifiMac");
+
+  WifiHelper wifi;
+  wifi.SetStandard(WIFI_STANDARD_80211b);
+
+  NS_LOG_UNCOND("Assigning MAC addresses in ad-hoc mode...");
+  auto adhocDevices = wifi.Install(wifiPhy, wifiMac, allAdHocNodes);
+
+  NS_LOG_UNCOND("Setting up Internet stacks...");
+  InternetStackHelper internet;
+  if (routingType == RoutingType::DSDV) {
+    NS_LOG_DEBUG("Using DSDV routing.");
+    DsdvHelper dsdv;
+    internet.SetRoutingHelper(dsdv);
+  } else if (routingType == RoutingType::AODV) {
+    NS_LOG_DEBUG("Using AODV routing.");
+    AodvHelper aodv;
+    internet.SetRoutingHelper(aodv);
+  }
+  internet.Install(allAdHocNodes);
+  Ipv4AddressHelper adhocAddresses;
+  adhocAddresses.SetBase("1.1.1.0", "255.255.255.255");
+  auto adhocInterfaces = adhocAddresses.Assign(adhocDevices);
+
+  // TODO implement and install an RHPMAN-like network application.
 
   // Run the simulation with support for animations.
   AnimationInterface anim(animationTraceFilename);
@@ -195,6 +269,7 @@ int main(int argc, char* argv[]) {
   Simulator::Run();
   Simulator::Destroy();
   NS_LOG_UNCOND("Done.");
+
 
   return EX_OK;
 }
