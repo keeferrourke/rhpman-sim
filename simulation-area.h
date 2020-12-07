@@ -1,13 +1,15 @@
-/// @file simulation-area.h
-/// @author Keefer Rourke (krourke@uoguelph.ca)
-/// @brief
+/// \file simulation-area.h
+/// \author Keefer Rourke <krourke@uoguelph.ca>
+/// \brief Declares a SimulationArea class which makes production of
+///     ns3::Rectangle which form a rectangular area split into a grid of cells
+///     much easier.
 ///
 /// Copyright (c) 2020 by Keefer Rourke <krourke@uoguelph.ca>
 /// Permission to use, copy, modify, and/or distribute this software for any
 /// purpose with or without fee is hereby granted, provided that the above
 /// copyright notice and this permission notice appear in all copies.
 ///
-/// THE SOFTWARE IS PROVIDED “AS IS” AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+/// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
 /// REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
 /// AND FITNESS. IN NO EVENT SHALL ISC BE LIABLE FOR ANY SPECIAL, DIRECT,
 /// INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
@@ -29,7 +31,7 @@
 
 namespace rhpman {
 
-/// @brief A helper class to divide out 2D cartesian grids into subgrids.
+/// \brief A helper class to divide out 2D cartesian grids into subgrids.
 ///     Coordinates are represented by std::pairs of doubles arranged by (x,y).
 class SimulationArea {
    public:
@@ -47,32 +49,32 @@ class SimulationArea {
     void setMin(std::pair<double, double> value) { m_min = value; }
     void setMax(std::pair<double, double> value) { m_max = value; }
 
-    /// @brief Converts this to an ns-3 rectangle object.
+    /// \brief Converts this to an ns-3 rectangle object.
     ///
-    /// @return ns3::Rectangle
+    /// \return ns3::Rectangle
     ns3::Rectangle asRectangle() const;
 
-    std::vector<SimulationArea> divideHorizontally(int32_t parts);
-    std::vector<SimulationArea> divideVertically(int32_t parts);
+    std::vector<SimulationArea> divideHorizontally(int32_t parts) const;
+    std::vector<SimulationArea> divideVertically(int32_t parts) const;
 
-    /// @brief Splits the area defined by the min and max coordinates into an
+    /// \brief Splits the area defined by the min and max coordinates into an
     ///     x by y grid of rectangles.
     ///
-    /// @param x The number of ways to divide this box horizontally.
-    /// @param y The number of ways to divide this box vertically.
-    /// @return std::vector<SimulationArea>
-    std::vector<SimulationArea> splitIntoGrid(int32_t x, int32_t y);
+    /// \param x The number of ways to divide this box horizontally.
+    /// \param y The number of ways to divide this box vertically.
+    /// \return std::vector<SimulationArea>
+    std::vector<SimulationArea> splitIntoGrid(int32_t x, int32_t y) const;
 
-    /// @brief Get a Grid Position Allocator which is compatible with constant
+    /// \brief Get a Grid Position Allocator which is compatible with constant
     ///     position mobility models.
     ///
-    /// @return ns3::Ptr<ns3::GridPositionAllocator>
+    /// \return ns3::Ptr<ns3::GridPositionAllocator>
     ns3::Ptr<ns3::GridPositionAllocator> getGridPositionAllocator() const;
 
-    /// @brief Get a Random Box Position Allocation which is compatible with
+    /// \brief Get a Random Box Position Allocation which is compatible with
     ///     random walk mobility models.
     ///
-    /// @return ns3::Ptr<ns3::RandomRectanglePositionAllocator>
+    /// \return ns3::Ptr<ns3::RandomRectanglePositionAllocator>
     ns3::Ptr<ns3::RandomRectanglePositionAllocator> getRandomRectanglePositionAllocator() const;
 
     std::string toString() const;

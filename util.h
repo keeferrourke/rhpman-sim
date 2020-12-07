@@ -1,13 +1,13 @@
-/// @file util.h
-/// @author Keefer Rourke (krourke@uoguelph.ca)
-/// @brief Generic utilties that make it easier to read and manipulate values.
+/// \file util.h
+/// \author Keefer Rourke <krourke@uoguelph.ca>
+/// \brief Generic utilties that make it easier to read and manipulate values.
 ///
 /// Copyright (c) 2020 by Keefer Rourke <krourke@uoguelph.ca>
 /// Permission to use, copy, modify, and/or distribute this software for any
 /// purpose with or without fee is hereby granted, provided that the above
 /// copyright notice and this permission notice appear in all copies.
 ///
-/// THE SOFTWARE IS PROVIDED “AS IS” AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+/// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
 /// REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
 /// AND FITNESS. IN NO EVENT SHALL ISC BE LIABLE FOR ANY SPECIAL, DIRECT,
 /// INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
@@ -21,6 +21,8 @@
 #include <inttypes.h>
 #include <iostream>
 #include <vector>
+
+#include "ns3/core-module.h"
 
 /// User defined literal for metric lengths.
 constexpr int32_t operator"" _meters(const unsigned long long meters) {

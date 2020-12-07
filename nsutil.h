@@ -1,13 +1,14 @@
-/// @file nsutil.h
-/// @author Keefer Rourke (krourke@uoguelph.ca)
-/// @brief A collection of methods that make it bit easier to work with some parts of ns-3.
+/// \file nsutil.h
+/// \author Keefer Rourke <krourke@uoguelph.ca>
+/// \brief A collection of methods that make it bit easier to work with some
+///     parts of ns-3.
 ///
 /// Copyright (c) 2020 by Keefer Rourke <krourke@uoguelph.ca>
 /// Permission to use, copy, modify, and/or distribute this software for any
 /// purpose with or without fee is hereby granted, provided that the above
 /// copyright notice and this permission notice appear in all copies.
 ///
-/// THE SOFTWARE IS PROVIDED “AS IS” AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+/// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
 /// REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
 /// AND FITNESS. IN NO EVENT SHALL ISC BE LIABLE FOR ANY SPECIAL, DIRECT,
 /// INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
@@ -24,6 +25,7 @@
 #include <utility>
 
 #include "ns3/aodv-helper.h"
+#include "ns3/core-module.h"
 #include "ns3/dsdv-helper.h"
 #include "ns3/ipv4-routing-helper.h"
 #include "ns3/random-walk-2d-mobility-model.h"
@@ -32,40 +34,30 @@ namespace rhpman {
 
 using namespace ns3;
 
+/// \brief User defined literal for time values in seconds.
+ns3::Time operator"" _sec(const long double seconds);
+
+/// \brief User defined literal for time values in minutes.
+ns3::Time operator"" _min(const long double minutes);
+
+/// \brief Routing type to use for the simulation.
+///   Supported values are DSDV and AODV.
 enum class RoutingType { DSDV, AODV, UNKNOWN };
 
-inline RoutingType getRoutingType(std:: string str) {
-  std::string lower = str;
-  std::transform(str.begin(), str.end(), lower.begin(), ::tolower);
-  if (lower == "dsdv") {
-    return RoutingType::DSDV;
-  }
-  if (lower == "aodv") {
-    return RoutingType::AODV;
-  }
-  return RoutingType::UNKNOWN;
-}
-
-/// @brief Parses a RandomWalk2dMobilityModel::Mode from a string.
+/// \brief Get the Routing Type enum from a string.
 ///
-/// @param str The string to parse.
-/// @return std::pair<ns3::RandomWalk2dMobilityModel::Mode, bool>
+/// \param str The string to parse.
+/// \return RoutingType The RoutingType enum defining the routing to use for
+///   for the simulation.
+RoutingType getRoutingType(std::string str);
+
+/// \brief Parses a RandomWalk2dMobilityModel::Mode from a string.
+///
+/// \param str The string to parse.
+/// \return std::pair<ns3::RandomWalk2dMobilityModel::Mode, bool>
 ///   where the first value is the result, and the second is a boolean indicating
 ///   success or failure. On failure, the second part of the returned pair will be false.
-inline std::pair<ns3::RandomWalk2dMobilityModel::Mode, bool> getWalkMode(std::string str) {
-  std::pair<ns3::RandomWalk2dMobilityModel::Mode, bool> result;
-  result.second = false;
-  std::string lower = str;
-  std::transform(str.begin(), str.end(), lower.begin(), ::tolower);
-  if (lower == "distance") {
-    result.first = ns3::RandomWalk2dMobilityModel::Mode::MODE_DISTANCE;
-    result.second = true;
-  } else if (lower == "time") {
-    result.first = ns3::RandomWalk2dMobilityModel::Mode::MODE_TIME;
-    result.second = true;
-  }
-  return result;
-}
+std::pair<ns3::RandomWalk2dMobilityModel::Mode, bool> getWalkMode(std::string str);
 
 };  // namespace rhpman
 
