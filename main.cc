@@ -181,20 +181,27 @@ int main(int argc, char* argv[]) {
     NS_LOG_DEBUG("Using DSDV routing.");
     DsdvHelper dsdv;
     internet.SetRoutingHelper(dsdv);
-    // dsdv.PrintRoutingTableAllAt(Seconds(150), neighbourStream);
-
   } else if (params.routingProtocol == RoutingType::AODV) {
     NS_LOG_DEBUG("Using AODV routing.");
     AodvHelper aodv;
     internet.SetRoutingHelper(aodv);
-    // aodv.PrintRoutingTableAllAt(Seconds(150), neighbourStream);
   }
   internet.Install(allAdHocNodes);
   Ipv4AddressHelper adhocAddresses;
   adhocAddresses.SetBase("1.1.1.0", "255.255.255.255");
   auto adhocInterfaces = adhocAddresses.Assign(adhocDevices);
 
-  // TODO implement and install an RHPMAN-like network application.
+  // Install the RHPMAN Scheme onto each node.
+  RhpmanAppHelper rhpman;
+  rhpman.SetAttribute("CarryingThreshold", DoubleValue(params.carryingThreshold));
+  rhpman.SetAttribute("ForwardingThreshold", DoubleValue(params.forwardingThreshold));
+  rhpman.SetAttribute("NeighborhoodSize", UintegerValue(params.neighborhoodSize));
+  rhpman.SetAttribute("ElectionNeighborhoodSize", UintegerValue(params.electionNeighborhoodSize));
+  rhpman.SetAttribute("ColocationWeight", DoubleValue(params.wcol));
+  rhpman.SetAttribute("DegreeConnectivityWeight", DoubleValue(params.wcdc));
+  rhpman.SetAttribute("ProfileUpdateDelay", TimeValue(params.profileUpdateDelay));
+  rhpman.SetDataOwners(params.dataOwners);
+  rhpman.Install(allAdHocNodes);
 
   // Run the simulation with support for animations.
   AnimationInterface anim(params.netanimTraceFilePath);

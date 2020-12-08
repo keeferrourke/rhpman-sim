@@ -24,6 +24,7 @@
 #ifndef __rhpman_h
 #define __rhpman_h
 
+#include <bits/stdint-uintn.h>
 #include <map>
 
 #include "ns3/application-container.h"
@@ -42,9 +43,12 @@ using namespace ns3;
 
 /// \brief RHPMAN network application, which defines data transfer, node
 ///     election, etc.
+///     If this app instance is a data owner, its role will be set to
+///     REPLICATING and its DataId will be non-negative.
+///     App instances which are not data owners will have negative a DataId.
 class RhpmanApp : public Application {
  public:
-  enum class Role { NON_REPLICATING = 0, REPLICATING };
+  enum Role { NON_REPLICATING = 0, REPLICATING };
 
   /// \brief Identifies the lifecycle state of this app.
   enum class State { NOT_STARTED = 0, RUNNING, STOPPED };
@@ -63,11 +67,15 @@ class RhpmanApp : public Application {
         m_profileDelay(),
         m_storage(),
         m_degreeConnectivity(),
-        m_socket(0){};
+        m_socket(0),
+        m_dataId(-1){};
 
   Ptr<Socket> GetSocket() const;
   Role GetRole() const;
   State GetState() const;
+  int32_t GetDataId() const {
+    return m_dataId;
+  }
 
  private:
   // Application lifecycle methods.
@@ -94,6 +102,7 @@ class RhpmanApp : public Application {
   std::vector<uint32_t> m_storage;
   std::map<Time, uint32_t> m_degreeConnectivity;
   Ptr<Socket> m_socket;
+  int32_t m_dataId;
 };
 
 /// \brief Helper class to install the RhpmanApplication on a Node containers.
@@ -102,14 +111,24 @@ class RhpmanApp : public Application {
 ///     The defaults of this class as described by Shi and Chen in their paper.
 class RhpmanAppHelper {
  public:
-  RhpmanAppHelper(uint32_t numDataOwners);
+  RhpmanAppHelper(uint32_t dataOwners = 0) : m_dataOwners(dataOwners) {
+    m_factory.SetTypeId(RhpmanApp::GetTypeId());
+    rand = CreateObject<UniformRandomVariable>();
+  };
+
   void SetAttribute(std::string name, const AttributeValue& value);
-  ApplicationContainer Install(NodeContainer nodes) const;
+  void SetDataOwners(uint32_t num);
+
+  /// \brief Configures a RHPMAN application and installs it on each node.
+  ApplicationContainer Install(NodeContainer nodes);
   ApplicationContainer Install(Ptr<Node> node) const;
   ApplicationContainer Install(std::string nodeName) const;
 
  private:
+  Ptr<Application> createAndInstallApp(Ptr<Node> node) const;
   ObjectFactory m_factory;
+  Ptr<UniformRandomVariable> rand;
+  uint32_t m_dataOwners;
 };
 
 };  // namespace rhpman

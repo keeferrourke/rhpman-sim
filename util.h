@@ -46,6 +46,11 @@ constexpr int32_t operator"" _b(const unsigned long long bytes) {
     return static_cast<int32_t>(bytes);
 }
 
+/// User defined literal for percentages.
+constexpr double operator"" _percent(const long double num) {
+    return num / 100.0;
+}
+
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
     os << "[";

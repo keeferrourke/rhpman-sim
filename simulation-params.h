@@ -31,6 +31,8 @@
 
 namespace rhpman {
 
+// TODO: Add parameters for neighborhood sizes, tau and sigma.
+
 /// \brief Encapsulates parsing parameters from the CommandLine.
 ///     Each public member of this class corresponds to a strongly typed object
 ///     built from one or more of the commandline arguments.
@@ -50,6 +52,23 @@ class SimulationParameters {
   uint32_t nodesPerPartition;
   /// Number of traveller nodes (computed).
   uint32_t travellerNodes;
+  /// Number of nodes who own data at the start of the simulation (computed).
+  uint32_t dataOwners;
+  /// RHPMAN carrying threshold (tau).
+  double carryingThreshold;
+  /// RHPMAN forwarding threshold (sigma).
+  double forwardingThreshold;
+  /// Weight of degree connectivity in delivery calculations.
+  double wcdc;
+  /// Weight of colocation in delivery calculations.
+  double wcol;
+  /// Time between profile updates.
+  ns3::Time profileUpdateDelay;
+  /// The number of hops defining the neighborhood of the node.
+  uint8_t neighborhoodSize;
+  /// The number of hops defining the neighborhood considered for a replicating
+  /// node election.
+  uint8_t electionNeighborhoodSize;
   /// The simulation area.
   SimulationArea area;
   /// The number of horizontal partitions.
