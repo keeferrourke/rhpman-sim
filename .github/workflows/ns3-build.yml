@@ -15,4 +15,4 @@ jobs:
         location: 'contrib'
         pre_run: 'pre.sh'
         sim_name: 'rhpman-example'
-        sim_args: '--run-time=900 --total-nodes=5'
+        sim_args: '--run-time=900'
