@@ -35,9 +35,6 @@
 #include "../model/util.h"
 #include "../model/nsutil.h"
 
-
-
-
 namespace rhpman {
 
 using namespace ns3;

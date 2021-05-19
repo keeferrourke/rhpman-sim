@@ -133,6 +133,11 @@ int main(int argc, char* argv[]) {
   bool ok;
   std::tie(params, ok) = SimulationParameters::parse(argc, argv);
 
+  if (!ok) {
+    std::cerr << "Error parsing the parameters.\n";
+    return -1;
+  }
+
   /* Create nodes, network topology, and start simulation. */
   RngSeedManager::SetSeed(params.seed);
   NodeContainer allAdHocNodes;
