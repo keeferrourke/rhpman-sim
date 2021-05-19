@@ -1,11 +1,16 @@
 # rhpman-sim
 
-This NS-3 scratch simulator code that attempts to implement the RHPMAN scheme
+This NS-3 simulator code module that attempts to implement the RHPMAN scheme
 and reproduce its performance evaluation as described by the following paper:
 
 > K. Shi and H. Chen, "RHPMAN: Replication in highly partitioned mobile
 > ad hoc networks," International Journal of Distributed Sensor Networks
 > Jul. 2014.
+
+
+This repository is a continuation of the work started by Keefer Rourke to complete
+the implementation. 
+
 
 ## Motivation
 
@@ -32,35 +37,46 @@ to use the latest version of the popular ns-3 network simulator instead.
 Reproducibility is key in simulation studies, so here's how to build the
 project!
 
- 1. Download and build copy of the ns-3.32 all-in-one distribution.
+ 1. This module makes use of [Google protocol buffers] for the network serialization
+    install the protobuf code generator for C++ on your system. 
+
+ 2. Download and build copy of the ns-3.32 all-in-one distribution.
 
     ```sh
     wget https://www.nsnam.org/release/ns-allinone-3.32.tar.bz2
     tar xjvf ns-allinone-3.32.tar.bz2
     cd ns-allinone-3.32
-    python3 ./build.py --enable-examples
+    python3 ./build.py --enable-examples --enable-tests
     ```
 
- 2. Change directories to the `scratch/` folder of the ns-3.32 source
+ 3. Change directories to the `contrib/` folder of the ns-3.32 source
     distribution.
 
     ```sh
-    cd ns-3.32/scratch/
+    cd ns-3.32/contrib/
     ```
 
- 3. Clone this repository.
+ 4. Clone this repository.
 
     ```sh
-    git clone git@github.com:keeferrourke/rhpman-sim.git rhpman
+    git clone git@github.com:marshallasch/rhpman.git
     ```
 
-4. Change directory back to the `ns-3.32` folder of the source distribution
+ 5. Change directory back to the `ns-3.32` folder of the source distribution
+   and re configure the module through the `waf` tool. 
+
+   ```sh
+   cd ..
+   ./waf configure --enable-tests --enable-examples
+   ```
+
+ 6. Change directory back to the `ns-3.32` folder of the source distribution
    and run this simulation through the `waf` tool. This will compile the
    simulation code and start executing the code.
 
    ```sh
    cd ..
-   ./waf --run 'scratch/rhpman/rhpman`
+   ./waf --run 'rhpman-example`
    ```
 
 ## Running the simulation
@@ -74,14 +90,14 @@ all the configurable parameters. The default values are as described in the
 RHPMAN paper cited at the top of this document.
 
 ```
-./waf --run 'scratch/rhpman/rhpman --printHelp'  # <-- mind the quotes!
+./waf --run 'rhpman-example --printHelp'  # <-- mind the quotes!
 ```
 
 You can view an animation of the simulation using `NetAnim`, which is included
 with the ns-3 all-in-one distribution. To do so, run the following:
 
 ```
-./waf --run 'scratch/rhpman/rhpman --animation-xml=path/to/rhpman.xml
+./waf --run 'rhpman-example --animation-xml=path/to/rhpman.xml
 ```
 
 This will generate an XML file at the specified path. You can then open this
@@ -105,3 +121,4 @@ of each source file.
 <!-- links -->
 
 [1]: https://danielgillis.wordpress.com/students/
+[Google Protbuf]: https://developers.google.com/protocol-buffers

@@ -105,32 +105,6 @@ class RhpmanApp : public Application {
   int32_t m_dataId;
 };
 
-/// \brief Helper class to install the RhpmanApplication on a Node containers.
-///     This can be configured to assign initial replication roles according to
-///     to some random distribution.
-///     The defaults of this class as described by Shi and Chen in their paper.
-class RhpmanAppHelper {
- public:
-  RhpmanAppHelper(uint32_t dataOwners = 0) : m_dataOwners(dataOwners) {
-    m_factory.SetTypeId(RhpmanApp::GetTypeId());
-    rand = CreateObject<UniformRandomVariable>();
-  };
-
-  void SetAttribute(std::string name, const AttributeValue& value);
-  void SetDataOwners(uint32_t num);
-
-  /// \brief Configures a RHPMAN application and installs it on each node.
-  ApplicationContainer Install(NodeContainer nodes);
-  ApplicationContainer Install(Ptr<Node> node) const;
-  ApplicationContainer Install(std::string nodeName) const;
-
- private:
-  Ptr<Application> createAndInstallApp(Ptr<Node> node) const;
-  ObjectFactory m_factory;
-  Ptr<UniformRandomVariable> rand;
-  uint32_t m_dataOwners;
-};
-
 };  // namespace rhpman
 
 #endif

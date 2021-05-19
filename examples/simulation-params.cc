@@ -22,7 +22,6 @@
 #include "ns3/random-variable-stream.h"
 #include "ns3/random-walk-2d-mobility-model.h"
 
-#include "logging.h"
 #include "simulation-params.h"
 #include "util.h"
 
@@ -158,26 +157,26 @@ std::pair<SimulationParameters, bool> SimulationParameters::parse(int argc, char
   bool ok = true;
   SimulationParameters result;
   if (optCarryingThreshold < 0 || optCarryingThreshold > 1) {
-    NS_LOG_ERROR("Carrying threshold (" << optCarryingThreshold << ") is not a probability");
+    std::cerr << "Carrying threshold (" << optCarryingThreshold << ") is not a probability" << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
   if (optForwardingThreshold < 0 || optForwardingThreshold > 1) {
-    NS_LOG_ERROR("Forwarding threshold (" << optForwardingThreshold << ") is not a probability");
+    std::cerr << "Forwarding threshold (" << optForwardingThreshold << ") is not a probability" << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
   if (optWcol < 0 || optWcol > 1) {
-    NS_LOG_ERROR("Colocation weight (" << optWcol << ") is not a probability");
+    std::cerr << "Colocation weight (" << optWcol << ") is not a probability" << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
   if (optWcdc < 0 || optWcdc > 1) {
-    NS_LOG_ERROR("Degree connectivity weight (" << optWcdc << ") is not a probability");
+    std::cerr << "Degree connectivity weight (" << optWcdc << ") is not a probability" << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
 
   RandomWalk2dMobilityModel::Mode travellerWalkMode;
   std::tie(travellerWalkMode, ok) = getWalkMode(optTravellerWalkMode);
   if (!ok) {
-    NS_LOG_ERROR("Unrecognized walk mode '" + optTravellerWalkMode + "'.");
+    std::cerr << "Unrecognized walk mode '" + optTravellerWalkMode + "'." << std::endl;
   }
   if (!optTravellerWalkDistance) {
     optTravellerWalkDistance = std::min(optAreaWidth, optAreaLength);
@@ -185,19 +184,19 @@ std::pair<SimulationParameters, bool> SimulationParameters::parse(int argc, char
 
   RoutingType routingType = getRoutingType(optRoutingProtocol);
   if (routingType == RoutingType::UNKNOWN) {
-    NS_LOG_ERROR("Unrecognized routing type '" + optRoutingProtocol + "'.");
+    std::cerr << "Unrecognized routing type '" + optRoutingProtocol + "'." << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
 
   if (optNodesPerPartition * optCols * optRows > optTotalNodes) {
-    NS_LOG_ERROR(
+    std::cerr <<
         "Too few nodes (" << optTotalNodes << ") to populate all " << optCols * optRows
-                          << " partitions with " << optNodesPerPartition << " nodes.");
+                          << " partitions with " << optNodesPerPartition << " nodes." << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
 
   if (optPercentageDataOwners < 0.0 || optPercentageDataOwners > 100.0) {
-    NS_LOG_ERROR("percentage of data owners (" << optPercentageDataOwners << "%) is out of range");
+    std::cerr << "percentage of data owners (" << optPercentageDataOwners << "%) is out of range" << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
 

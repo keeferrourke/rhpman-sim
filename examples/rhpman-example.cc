@@ -46,15 +46,17 @@
 #include "ns3/wifi-standards.h"
 #include "ns3/yans-wifi-helper.h"
 
-#include "logging.h"
+//#include "logging.h"
 #include "nsutil.h"
-#include "rhpman.h"
+#include "ns3/rhpman-helper.h"
 #include "simulation-area.h"
 #include "simulation-params.h"
 #include "util.h"
 
 using namespace ns3;
 using namespace rhpman;
+
+NS_LOG_COMPONENT_DEFINE("RhpmanExample");
 
 /// \brief Creates and configures the traveller nodes according to simulation parameters.
 ///
@@ -130,6 +132,11 @@ int main(int argc, char* argv[]) {
   SimulationParameters params;
   bool ok;
   std::tie(params, ok) = SimulationParameters::parse(argc, argv);
+
+  if (!ok) {
+    std::cerr << "Error parsing the parameters.\n";
+    return -1;
+  }
 
   /* Create nodes, network topology, and start simulation. */
   RngSeedManager::SetSeed(params.seed);
