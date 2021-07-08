@@ -63,4 +63,4 @@ std::pair<ns3::RandomWalk2dMobilityModel::Mode, bool> getWalkMode(std::string st
   return result;
 }
 
-};
+};  // namespace rhpman

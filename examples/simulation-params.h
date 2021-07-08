@@ -40,7 +40,6 @@ namespace rhpman {
 ///     method.
 /// \see SimulationParameters::parse
 class SimulationParameters {
-
  public:
   /// Simulation RNG seed.
   uint32_t seed;

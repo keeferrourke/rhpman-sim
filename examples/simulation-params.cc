@@ -157,11 +157,13 @@ std::pair<SimulationParameters, bool> SimulationParameters::parse(int argc, char
   bool ok = true;
   SimulationParameters result;
   if (optCarryingThreshold < 0 || optCarryingThreshold > 1) {
-    std::cerr << "Carrying threshold (" << optCarryingThreshold << ") is not a probability" << std::endl;
+    std::cerr << "Carrying threshold (" << optCarryingThreshold << ") is not a probability"
+              << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
   if (optForwardingThreshold < 0 || optForwardingThreshold > 1) {
-    std::cerr << "Forwarding threshold (" << optForwardingThreshold << ") is not a probability" << std::endl;
+    std::cerr << "Forwarding threshold (" << optForwardingThreshold << ") is not a probability"
+              << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
   if (optWcol < 0 || optWcol > 1) {
@@ -189,14 +191,14 @@ std::pair<SimulationParameters, bool> SimulationParameters::parse(int argc, char
   }
 
   if (optNodesPerPartition * optCols * optRows > optTotalNodes) {
-    std::cerr <<
-        "Too few nodes (" << optTotalNodes << ") to populate all " << optCols * optRows
-                          << " partitions with " << optNodesPerPartition << " nodes." << std::endl;
+    std::cerr << "Too few nodes (" << optTotalNodes << ") to populate all " << optCols * optRows
+              << " partitions with " << optNodesPerPartition << " nodes." << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
 
   if (optPercentageDataOwners < 0.0 || optPercentageDataOwners > 100.0) {
-    std::cerr << "percentage of data owners (" << optPercentageDataOwners << "%) is out of range" << std::endl;
+    std::cerr << "percentage of data owners (" << optPercentageDataOwners << "%) is out of range"
+              << std::endl;
     return std::pair<SimulationParameters, bool>(result, false);
   }
 

@@ -39,7 +39,6 @@
 
 #include "ns3/rhpman.h"
 
-
 namespace rhpman {
 
 using namespace ns3;

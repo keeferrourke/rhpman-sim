@@ -73,9 +73,7 @@ class RhpmanApp : public Application {
   Ptr<Socket> GetSocket() const;
   Role GetRole() const;
   State GetState() const;
-  int32_t GetDataId() const {
-    return m_dataId;
-  }
+  int32_t GetDataId() const { return m_dataId; }
 
  private:
   // Application lifecycle methods.

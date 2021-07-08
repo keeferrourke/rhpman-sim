@@ -47,8 +47,8 @@
 #include "ns3/yans-wifi-helper.h"
 
 //#include "logging.h"
-#include "nsutil.h"
 #include "ns3/rhpman-helper.h"
+#include "nsutil.h"
 #include "simulation-area.h"
 #include "simulation-params.h"
 #include "util.h"
