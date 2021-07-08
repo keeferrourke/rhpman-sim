@@ -35,7 +35,6 @@
 #include "rhpman.h"
 #include "util.h"
 
-
 namespace rhpman {
 
 using namespace ns3;
@@ -59,12 +58,6 @@ TypeId RhpmanApp::GetTypeId() {
                   "Role::NONE_REPLICATING",
                   Role::REPLICATING,
                   "Role::REPLICATING"))
-          .AddAttribute(
-              "DataId",
-              "The data this application must distribute",
-              IntegerValue(-1),
-              MakeIntegerAccessor(&RhpmanApp::m_dataId),
-              MakeEmptyAttributeChecker())
           .AddAttribute(
               "ForwardingThreshold",
               "If probability of delivery to a node is higher than this value, data is forwarded "
@@ -157,10 +150,8 @@ void RhpmanApp::StopApplication() {
   m_state = State::STOPPED;
 }
 
-
 // this is public and is how any data lookup is made
-void RhpmanApp::Lookup(uint64_t id, Callback<void, DataItem*> success, Callback<void, uint64_t> failed) {
-
+void RhpmanApp::Lookup(uint64_t id) {
   // check local storage
   // ask peers
   // schedule timeouts
@@ -174,10 +165,78 @@ bool RhpmanApp::Save(DataItem* data) {
   return true;
 }
 
-// this is a helper and will return the number of data items that can be stored in local storage still
-uint32_t RhpmanApp::getFreeSpace() {
-  return 0;
+// storage array functions
+
+// this will set all possitions in the storage list to NULL so it can be used
+void RhpmanApp::InitStorage() {
+  for (uint32_t i = 0; i < m_storageSpace; i++) {
+    m_storage[i] = NULL;
+  }
 }
 
+// this will do the actual storage. will store the item not a copy
+// true if there was space false otherwise
+bool RhpmanApp::StoreItem(DataItem* data) {
+  bool saved = false;
+  for (uint32_t i = 0; i < m_storageSpace; i++) {
+    if (m_storage[i] == NULL) {
+      m_storage[i] = data;
+      saved = true;
+      break;
+    }
+  }
+
+  return saved;
+}
+
+// this will return a pointer to the data item if it is found or NULL if it is not
+DataItem* RhpmanApp::GetItem(uint64_t dataID) {
+  DataItem* found = NULL;
+
+  for (uint32_t i = 0; i < m_storageSpace; i++) {
+    if (m_storage[i] != NULL && m_storage[i]->getID() == dataID) {
+      found = m_storage[i];
+      break;
+    }
+  }
+
+  return found;
+}
+
+// return true if the item was removed from storage, false if it was not found
+bool RhpmanApp::RemoveItem(uint64_t dataID) {
+  for (uint32_t i = 0; i < m_storageSpace; i++) {
+    if (m_storage[i] != NULL && m_storage[i]->getID() == dataID) {
+      free(m_storage[i]);
+      m_storage[i] = NULL;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// this will empty all data items from storage
+void RhpmanApp::ClearStorage() {
+  for (uint32_t i = 0; i < m_storageSpace; i++) {
+    if (m_storage[i] != NULL) {
+      free(m_storage[i]);
+      m_storage[i] = NULL;
+    }
+  }
+}
+
+// this is a helper and will return the number of data items that can be stored in local storage
+uint32_t RhpmanApp::GetFreeSpace() {
+  uint32_t count = 0;
+
+  for (uint32_t i = 0; i < m_storageSpace; i++) {
+    if (m_storage[i] != NULL) {
+      count++;
+    }
+  }
+
+  return m_storageSpace - count;
+}
 
 }  // namespace rhpman

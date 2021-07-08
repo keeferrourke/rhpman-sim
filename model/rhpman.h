@@ -26,17 +26,18 @@
 
 #include <bits/stdint-uintn.h>
 #include <map>
+#include <set>  // std::set
 
 #include "ns3/application-container.h"
 #include "ns3/application.h"
 #include "ns3/applications-module.h"
 #include "ns3/attribute.h"
+#include "ns3/callback.h"
 #include "ns3/core-module.h"
 #include "ns3/node-container.h"
 #include "ns3/object-base.h"
 #include "ns3/object-factory.h"
 #include "ns3/socket.h"
-#include "ns3/callback.h"
 #include "ns3/uinteger.h"
 
 #include "dataItem.h"
@@ -69,18 +70,14 @@ class RhpmanApp : public Application {
         m_neighborhoodHops(2),
         m_electionNeighborhoodHops(4),
         m_profileDelay(),
-        m_storage(),
         m_degreeConnectivity(),
-        m_socket(0),
-        m_dataId(-1){};
+        m_socket(0){};
 
   Ptr<Socket> GetSocket() const;
   Role GetRole() const;
   State GetState() const;
-  int32_t GetDataId() const { return m_dataId; }
 
-
-  void Lookup(uint64_t id, Callback<void, DataItem*> success, Callback<void, uint64_t> failed);
+  void Lookup(uint64_t id);
 
   bool Save(DataItem* data);
   uint32_t getFreeSpace();
@@ -107,10 +104,26 @@ class RhpmanApp : public Application {
   uint32_t m_neighborhoodHops;
   uint32_t m_electionNeighborhoodHops;
   Time m_profileDelay;
-  std::vector<uint32_t> m_storage;
   std::map<Time, uint32_t> m_degreeConnectivity;
   Ptr<Socket> m_socket;
-  int32_t m_dataId;
+
+  // data storage for the node
+  uint32_t m_storageSpace;
+  std::vector<DataItem*> m_storage;
+
+  void InitStorage();
+  bool StoreItem(DataItem* data);
+  DataItem* GetItem(uint64_t dataID);
+  bool RemoveItem(uint64_t dataID);
+  void ClearStorage();
+  uint32_t GetFreeSpace();
+
+  // callbacks for lookup requests
+  Callback<void, uint64_t> m_failed;
+  Callback<void, DataItem*> m_success;
+
+  Time m_request_timeout;
+  std::set<uint64_t> m_pendingLookups;
 };
 
 };  // namespace rhpman

@@ -11,10 +11,19 @@ DataItem::DataItem() {
   bytes = NULL;
 }
 
+DataItem::DataItem(uint32_t dataSize, const uint8_t* payload) {
+  static uint64_t autoID = 1;
+  dataID = ++autoID;
+  size = dataSize;
+  bytes = (uint8_t*)malloc(size * sizeof(uint8_t));
+
+  memcpy(bytes, payload, size);
+}
+
 DataItem::DataItem(uint64_t id, uint32_t dataSize, const uint8_t* payload) {
   dataID = id;
   size = dataSize;
-  bytes = (uint8_t*) malloc(size * sizeof(uint8_t));
+  bytes = (uint8_t*)malloc(size * sizeof(uint8_t));
 
   memcpy(bytes, payload, size);
 }
