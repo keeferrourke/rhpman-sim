@@ -33,6 +33,7 @@
 #include "ns3/attribute.h"
 #include "ns3/callback.h"
 //#include "ns3/core-module.h"
+#include "ns3/event-id.h"
 #include "ns3/node-container.h"
 #include "ns3/object-base.h"
 #include "ns3/object-factory.h"
@@ -40,6 +41,7 @@
 #include "ns3/uinteger.h"
 
 #include "dataItem.h"
+//#include "proto/messages.pb.h"
 
 namespace rhpman {
 
@@ -105,11 +107,25 @@ class RhpmanApp : public Application {
   std::map<Time, uint32_t> m_degreeConnectivity;
   Ptr<Socket> m_socket;
 
+  // timeouts
+  Time m_request_timeout;
+  Time m_election_timeout;
+  Time m_election_cooldown;
+  Time m_min_election_time;  // this is the earliest time that another election is allowed to be
+                             // requested by a node
+
   // event handlers
   void LookupTimeout(uint64_t requestID);
   void ElectionWatchDog();
 
   EventId m_election_watchdog_event;
+
+  // event triggers
+  void TriggerElection();
+  void SendPing();
+
+  // message handlers
+  void HandlePing(uint64_t nodeID, bool isReplication);
 
   // data storage for the node
   uint32_t m_storageSpace;
@@ -125,7 +141,6 @@ class RhpmanApp : public Application {
   Callback<void, uint64_t, uint64_t> m_failed;
   Callback<void, uint64_t, DataItem*> m_success;
 
-  Time m_request_timeout;
   std::set<uint64_t> m_pendingLookups;
   std::map<uint64_t, uint64_t> m_lookupMapping;
 };

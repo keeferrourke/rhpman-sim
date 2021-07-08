@@ -35,6 +35,8 @@
 #include "rhpman.h"
 #include "util.h"
 
+#include "proto/messages.pb.h"
+
 namespace rhpman {
 
 using namespace ns3;
@@ -131,7 +133,6 @@ void RhpmanApp::StartApplication() {
   NS_LOG_DEBUG("Starting RhpmanApp");
   m_state = State::NOT_STARTED;
 
-
   // set the default callbacks so it does not crash
   m_success = MakeNullCallback<void, uint64_t, DataItem*>();
   m_failed = MakeNullCallback<void, uint64_t, uint64_t>();
@@ -186,12 +187,36 @@ bool RhpmanApp::Save(DataItem* data) {
 //  send messages
 // ================================================
 
+// send the broadcast to all h_r nodes to start a new election
+void RhpmanApp::TriggerElection() { m_min_election_time = Simulator::Now() + m_election_cooldown; }
+
+void RhpmanApp::SendPing() {
+  // calculate fitness
+  // check if replicating node
+  // send UDP ping to h or h_r hops
+
+
+  // schedule next ping
+  if (m_state == State::RUNNING) {
+    Simulator::Schedule(m_election_timeout, &RhpmanApp::SendPing, this);
+  }
+}
 
 // ================================================
 //  message handlers
 // ================================================
 
+void RhpmanApp::HandlePing(uint64_t nodeID, bool isReplication) {
+  // reset the watchdog timer
+  if (isReplication && m_election_watchdog_event.IsRunning()) {
+    m_election_watchdog_event.Cancel();
 
+    if (m_state == State::RUNNING) {
+      m_election_watchdog_event =
+          Simulator::Schedule(m_election_timeout, &RhpmanApp::ElectionWatchDog, this);
+    }
+  }
+}
 
 // ================================================
 //  Scheduled event handlers
@@ -216,7 +241,16 @@ void RhpmanApp::LookupTimeout(uint64_t requestID) {
 // this event must be canceled / restarted whenever a 'ping' is received from one of the replicating
 // nodes do not schedule this if current node is a replicating node if this triggers then start an
 // election
-void RhpmanApp::ElectionWatchDog() {}
+void RhpmanApp::ElectionWatchDog() {
+  // check if currently running an election
+  if (Simulator::Now() < m_min_election_time) {
+    NS_LOG_DEBUG("too early to run another election");
+    return;
+  }
+
+  NS_LOG_DEBUG("Cant connect to any replicating nodes, triggering an election");
+  TriggerElection();
+}
 
 // ================================================
 // storage array functions

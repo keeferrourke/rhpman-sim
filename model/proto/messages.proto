@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package rhpman.packets;
+
+message Message {
+    uint64 id = 1;              // DO NOT SET THIS TO 0
+    uint64 response_to = 2;      // this is only set if this is a response message, default 0
+
+    uint64 original_sent_at = 3; // this is the timestamp from the request, only set in the reponse
+    uint64 timestamp = 4;
+
+    oneof payload {
+        PingPong ping = 5;
+        Request request = 6;
+        Response response = 7;
+    }
+}
+
+message PingPong {
+    uint64 nodeID = 1;
+    bool replicating_node = 2;
+}
+
+
+message Request {
+    uint64 data_id = 1;
+    bool replication_request = 2;
+}
+
+message Response {
+    uint64 data_id = 1;
+    bool replication_request = 2;
+    bytes data = 3;
+}
