@@ -21,7 +21,7 @@ class RhpmanTestCase1 : public TestCase {
 };
 
 // Add some help text to this case to describe what it is intended to test
-RhpmanTestCase1::RhpmanTestCase1() : TestCase("Saf test case (does nothing)") {}
+RhpmanTestCase1::RhpmanTestCase1() : TestCase("rhpman test case (does nothing)") {}
 
 // This destructor does nothing but we include it as a reminder that
 // the test case should clean up after itself
@@ -47,7 +47,7 @@ class RhpmanTestSuite : public TestSuite {
   RhpmanTestSuite();
 };
 
-RhpmanTestSuite::RhpmanTestSuite() : TestSuite("saf", UNIT) {
+RhpmanTestSuite::RhpmanTestSuite() : TestSuite("rhpman", UNIT) {
   // TestDuration for TestCase can be QUICK, EXTENSIVE or TAKES_FOREVER
   AddTestCase(new RhpmanTestCase1, TestCase::QUICK);
 }

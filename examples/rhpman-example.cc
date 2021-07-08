@@ -182,8 +182,6 @@ int main(int argc, char* argv[]) {
   NS_LOG_UNCOND("Setting up Internet stacks...");
   InternetStackHelper internet;
 
-  std::ostringstream ss;
-  Ptr<OutputStreamWrapper> neighbourStream = Create<OutputStreamWrapper>(&ss);
   if (params.routingProtocol == RoutingType::DSDV) {
     NS_LOG_DEBUG("Using DSDV routing.");
     DsdvHelper dsdv;
@@ -217,8 +215,6 @@ int main(int argc, char* argv[]) {
   Simulator::Run();
   Simulator::Destroy();
   NS_LOG_UNCOND("Done.");
-
-  std::cout << ss.str() << std::endl;
 
   return EX_OK;
 }
