@@ -53,4 +53,4 @@ RhpmanTestSuite::RhpmanTestSuite() : TestSuite("rhpman", UNIT) {
 }
 
 // Do not forget to allocate an instance of this TestSuite
-static RhpmanTestSuite srhpmanTestSuite;
+static RhpmanTestSuite rhpmanTestSuite;

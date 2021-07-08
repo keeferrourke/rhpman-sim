@@ -36,6 +36,10 @@
 #include "ns3/object-base.h"
 #include "ns3/object-factory.h"
 #include "ns3/socket.h"
+#include "ns3/callback.h"
+#include "ns3/uinteger.h"
+
+#include "dataItem.h"
 
 namespace rhpman {
 
@@ -74,6 +78,12 @@ class RhpmanApp : public Application {
   Role GetRole() const;
   State GetState() const;
   int32_t GetDataId() const { return m_dataId; }
+
+
+  void Lookup(uint64_t id, Callback<void, DataItem*> success, Callback<void, uint64_t> failed);
+
+  bool Save(DataItem* data);
+  uint32_t getFreeSpace();
 
  private:
   // Application lifecycle methods.

@@ -35,6 +35,7 @@
 #include "rhpman.h"
 #include "util.h"
 
+
 namespace rhpman {
 
 using namespace ns3;
@@ -155,5 +156,28 @@ void RhpmanApp::StopApplication() {
 
   m_state = State::STOPPED;
 }
+
+
+// this is public and is how any data lookup is made
+void RhpmanApp::Lookup(uint64_t id, Callback<void, DataItem*> success, Callback<void, uint64_t> failed) {
+
+  // check local storage
+  // ask peers
+  // schedule timeouts
+}
+
+// this is public and is how new data items are stored in the network
+// if there is no more space in the local cache false is returned, otherwise it is true
+bool RhpmanApp::Save(DataItem* data) {
+  // store in local data storage
+  // send to peers
+  return true;
+}
+
+// this is a helper and will return the number of data items that can be stored in local storage still
+uint32_t RhpmanApp::getFreeSpace() {
+  return 0;
+}
+
 
 }  // namespace rhpman

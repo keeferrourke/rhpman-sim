@@ -12,7 +12,7 @@ def build(bld):
     module = bld.create_ns3_module('rhpman', ['core', 'stats', 'aodv', 'dsdv', 'internet', 'mobility', 'wifi'])
     module.source = [
         'model/rhpman.cc',
-       # 'model/data.cc',
+        'model/dataItem.cc',
         'model/nsutil.cc',
         'model/logging.cc',
         'helper/rhpman-helper.cc',
@@ -35,7 +35,7 @@ def build(bld):
     headers.module = 'rhpman'
     headers.source = [
         'model/rhpman.h',
-       # 'model/data.h',
+        'model/dataItem.h',
       #  'model/util.h',
         'helper/rhpman-helper.h',
         ]
