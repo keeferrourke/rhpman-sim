@@ -20,7 +20,7 @@
 #ifndef __rhpman_logging_h_
 #define __rhpman_logging_h_
 
-#include "ns3/core-module.h"
+//#include "ns3/core-module.h"
 
 extern ns3::LogComponent g_log;
 

@@ -24,7 +24,6 @@
 #ifndef __rhpman_helper_h
 #define __rhpman_helper_h
 
-#include <bits/stdint-uintn.h>
 #include <map>
 
 #include "ns3/application-container.h"

@@ -24,7 +24,6 @@
 #ifndef __rhpman_h
 #define __rhpman_h
 
-#include <bits/stdint-uintn.h>
 #include <map>
 #include <set>  // std::set
 
@@ -33,7 +32,7 @@
 #include "ns3/applications-module.h"
 #include "ns3/attribute.h"
 #include "ns3/callback.h"
-#include "ns3/core-module.h"
+//#include "ns3/core-module.h"
 #include "ns3/node-container.h"
 #include "ns3/object-base.h"
 #include "ns3/object-factory.h"
@@ -78,9 +77,8 @@ class RhpmanApp : public Application {
   State GetState() const;
 
   void Lookup(uint64_t id);
-
   bool Save(DataItem* data);
-  uint32_t getFreeSpace();
+  uint32_t GetFreeSpace();
 
  private:
   // Application lifecycle methods.
@@ -107,6 +105,12 @@ class RhpmanApp : public Application {
   std::map<Time, uint32_t> m_degreeConnectivity;
   Ptr<Socket> m_socket;
 
+  // event handlers
+  void LookupTimeout(uint64_t requestID);
+  void ElectionWatchDog();
+
+  EventId m_election_watchdog_event;
+
   // data storage for the node
   uint32_t m_storageSpace;
   std::vector<DataItem*> m_storage;
@@ -116,14 +120,14 @@ class RhpmanApp : public Application {
   DataItem* GetItem(uint64_t dataID);
   bool RemoveItem(uint64_t dataID);
   void ClearStorage();
-  uint32_t GetFreeSpace();
 
   // callbacks for lookup requests
-  Callback<void, uint64_t> m_failed;
-  Callback<void, DataItem*> m_success;
+  Callback<void, uint64_t, uint64_t> m_failed;
+  Callback<void, uint64_t, DataItem*> m_success;
 
   Time m_request_timeout;
   std::set<uint64_t> m_pendingLookups;
+  std::map<uint64_t, uint64_t> m_lookupMapping;
 };
 
 };  // namespace rhpman

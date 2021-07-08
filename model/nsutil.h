@@ -25,7 +25,7 @@
 #include <utility>
 
 #include "ns3/aodv-helper.h"
-#include "ns3/core-module.h"
+//#include "ns3/core-module.h"
 #include "ns3/dsdv-helper.h"
 #include "ns3/ipv4-routing-helper.h"
 #include "ns3/random-walk-2d-mobility-model.h"

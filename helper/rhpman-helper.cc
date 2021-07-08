@@ -68,11 +68,11 @@ ApplicationContainer RhpmanAppHelper::Install(NodeContainer nodes) {
     Ptr<Node> node = nodes.Get(i);
     if (std::find(dataOwnerIds.begin(), dataOwnerIds.end(), i) != dataOwnerIds.end()) {
       m_factory.Set("Role", EnumValue(RhpmanApp::Role::REPLICATING));
-      m_factory.Set("DataId", IntegerValue(i));
+      // m_factory.Set("DataId", IntegerValue(i));
     }
     apps.Add(createAndInstallApp(node));
     m_factory.Set("Role", EnumValue(RhpmanApp::Role::NON_REPLICATING));
-    m_factory.Set("DataId", IntegerValue(-1));
+    // m_factory.Set("DataId", IntegerValue(-1));
   }
   return apps;
 }

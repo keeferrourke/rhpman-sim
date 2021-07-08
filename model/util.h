@@ -22,7 +22,7 @@
 #include <iostream>
 #include <vector>
 
-#include "ns3/core-module.h"
+//#include "ns3/core-module.h"
 
 /// User defined literal for metric lengths.
 constexpr int32_t operator"" _meters(const unsigned long long meters) {

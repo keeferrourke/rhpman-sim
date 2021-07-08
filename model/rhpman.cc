@@ -21,7 +21,7 @@
 #include "ns3/application.h"
 #include "ns3/applications-module.h"
 #include "ns3/attribute.h"
-#include "ns3/core-module.h"
+//#include "ns3/core-module.h"
 #include "ns3/double.h"
 #include "ns3/enum.h"
 #include "ns3/node-container.h"
@@ -100,7 +100,19 @@ TypeId RhpmanApp::GetTypeId() {
               "Time to wait between profile update and exchange (T)",
               TimeValue(6.0_sec),
               MakeTimeAccessor(&RhpmanApp::m_profileDelay),
-              MakeTimeChecker(0.1_sec));
+              MakeTimeChecker(0.1_sec))
+          .AddAttribute(
+              "lookup_success_cb",
+              "a callback to be called when a data item is successfully found",
+              CallbackValue(),
+              MakeCallbackAccessor(&RhpmanApp::m_success),
+              MakeCallbackChecker())
+          .AddAttribute(
+              "lookup_failed_cb",
+              "a callback to be called when a data lookup times out",
+              CallbackValue(),
+              MakeCallbackAccessor(&RhpmanApp::m_failed),
+              MakeCallbackChecker());
   return id;
 }
 
@@ -118,6 +130,11 @@ void RhpmanApp::StartApplication() {
   }
   NS_LOG_DEBUG("Starting RhpmanApp");
   m_state = State::NOT_STARTED;
+
+
+  // set the default callbacks so it does not crash
+  m_success = MakeNullCallback<void, uint64_t, DataItem*>();
+  m_failed = MakeNullCallback<void, uint64_t, uint64_t>();
 
   // TODO: I think I need multiple sockets? Maybe not though.
   // - One socket for replication election; broadcast special packet (TODO) to
@@ -162,13 +179,52 @@ void RhpmanApp::Lookup(uint64_t id) {
 bool RhpmanApp::Save(DataItem* data) {
   // store in local data storage
   // send to peers
-  return true;
+  return false;
 }
 
+// ================================================
+//  send messages
+// ================================================
+
+
+// ================================================
+//  message handlers
+// ================================================
+
+
+
+// ================================================
+//  Scheduled event handlers
+// ================================================
+
+// this will call the lookup failed callback for the request
+void RhpmanApp::LookupTimeout(uint64_t requestID) {
+  NS_LOG_FUNCTION(this);
+
+  // check to see if it is still in the pending lookup list
+  std::set<uint64_t>::iterator it = m_pendingLookups.find(requestID);
+  std::map<uint64_t, uint64_t>::iterator mapping;
+
+  if (it != m_pendingLookups.end()) {
+    mapping = m_lookupMapping.find(requestID);
+
+    if (!m_failed.IsNull()) m_failed(requestID, mapping->second);
+    m_pendingLookups.erase(it);
+  }
+}
+
+// this event must be canceled / restarted whenever a 'ping' is received from one of the replicating
+// nodes do not schedule this if current node is a replicating node if this triggers then start an
+// election
+void RhpmanApp::ElectionWatchDog() {}
+
+// ================================================
 // storage array functions
+// ================================================
 
 // this will set all possitions in the storage list to NULL so it can be used
 void RhpmanApp::InitStorage() {
+  m_storage.resize(m_storageSpace);
   for (uint32_t i = 0; i < m_storageSpace; i++) {
     m_storage[i] = NULL;
   }
