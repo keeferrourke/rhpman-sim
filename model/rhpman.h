@@ -128,16 +128,22 @@ class RhpmanApp : public Application {
   void SendPing();
   void SendFitness();
   void SendRoleChange(uint32_t newReplicationNode);
+  void SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dataID);
+  void SendSyncStore(uint32_t nodeID, DataItem* data);
 
   // schedulers
   void ScheduleElectionCheck();
   void ScheduleElectionWatchdog();
+  void ScheduleLookupTimeout(uint64_t requestID, uint64_t dataID);
 
   // other helpers
   void RunElection();
   void MakeReplicaHolderNode();
   void MakeNonReplicaHolderNode();
+  void LookupFromReplicaHolders(uint64_t dataID);
+  void SendToReplicaHolders(DataItem* data);
   uint32_t GetID();
+  static uint64_t GenerateRequestID();
 
   // calculation helpers
   double CalculateElectionFitness();
@@ -159,8 +165,8 @@ class RhpmanApp : public Application {
   void ClearStorage();
 
   // callbacks for lookup requests
-  Callback<void, uint64_t, uint64_t> m_failed;
-  Callback<void, uint64_t, DataItem*> m_success;
+  Callback<void, uint64_t> m_failed;
+  Callback<void, DataItem*> m_success;
 
   std::set<uint64_t> m_pendingLookups;
   std::map<uint64_t, uint64_t> m_lookupMapping;
@@ -170,8 +176,7 @@ class RhpmanApp : public Application {
   std::map<uint32_t, double> m_peerFitness;
 
   double m_myFitness;
-  std::set<uint32_t>
-      m_replicating_nodes;  // this is a list of the current replicating nodes that is known about
+  std::set<uint32_t> m_replicating_nodes;
 };
 
 };  // namespace rhpman

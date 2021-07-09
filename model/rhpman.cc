@@ -134,8 +134,8 @@ void RhpmanApp::StartApplication() {
   m_state = State::NOT_STARTED;
 
   // set the default callbacks so it does not crash
-  m_success = MakeNullCallback<void, uint64_t, DataItem*>();
-  m_failed = MakeNullCallback<void, uint64_t, uint64_t>();
+  m_success = MakeNullCallback<void, DataItem*>();
+  m_failed = MakeNullCallback<void, uint64_t>();
 
   // TODO: I think I need multiple sockets? Maybe not though.
   // - One socket for replication election; broadcast special packet (TODO) to
@@ -169,17 +169,29 @@ void RhpmanApp::StopApplication() {
 
 // this is public and is how any data lookup is made
 void RhpmanApp::Lookup(uint64_t id) {
-  // check local storage
+  // check cache
+  DataItem* item = GetItem(id);
+  if (item != NULL) {
+    if (!m_success.IsNull()) m_success(item);
+    return;
+  }
+
   // ask peers
-  // schedule timeouts
+  if (m_replicating_nodes.size() != 0) {
+    LookupFromReplicaHolders(id);
+    return;
+  }
+
+  // run semi probabilistic lookup
 }
 
 // this is public and is how new data items are stored in the network
 // if there is no more space in the local cache false is returned, otherwise it is true
 bool RhpmanApp::Save(DataItem* data) {
-  // store in local data storage
-  // send to peers
-  return false;
+  bool status = StoreItem(data);
+  SendToReplicaHolders(data);
+
+  return status;
 }
 
 // ================================================
@@ -215,6 +227,14 @@ void RhpmanApp::SendRoleChange(uint32_t newReplicationNode) {
   // send broadcast to h_r nodes
 }
 
+void RhpmanApp::SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dataID) {
+  // send direct message to peer
+}
+
+void RhpmanApp::SendSyncStore(uint32_t nodeID, DataItem* data) {
+  // send direct message to peer
+}
+
 // ================================================
 //  event schedulers
 // ================================================
@@ -230,6 +250,15 @@ void RhpmanApp::ScheduleElectionWatchdog() {
   if (m_state == State::RUNNING) {
     m_election_watchdog_event =
         Simulator::Schedule(m_election_watchdog_timeout, &RhpmanApp::ElectionWatchDog, this);
+  }
+}
+
+void RhpmanApp::ScheduleLookupTimeout(uint64_t requestID, uint64_t dataID) {
+  if (m_state == State::RUNNING) {
+    EventId event =
+        Simulator::Schedule(m_request_timeout, &RhpmanApp::LookupTimeout, this, requestID);
+    m_pendingLookups.insert(requestID);
+    m_lookupMapping[requestID] = dataID;
   }
 }
 
@@ -298,6 +327,28 @@ void RhpmanApp::MakeNonReplicaHolderNode() {
   SendRoleChange(0);
 }
 
+// this will send the synchonous data lookup requests to all of the known replica holder nodes
+void RhpmanApp::LookupFromReplicaHolders(uint64_t dataID) {
+  // create lookup message (use the same ID for each message sent)
+  uint64_t requestID = RhpmanApp::GenerateRequestID();
+
+  for (std::set<uint32_t>::iterator it = m_replicating_nodes.begin();
+       it != m_replicating_nodes.end();
+       ++it) {
+    SendSyncLookup(requestID, *it, dataID);
+  }
+
+  ScheduleLookupTimeout(requestID, dataID);
+}
+
+void RhpmanApp::SendToReplicaHolders(DataItem* data) {
+  for (std::set<uint32_t>::iterator it = m_replicating_nodes.begin();
+       it != m_replicating_nodes.end();
+       ++it) {
+    SendSyncStore(*it, data);
+  }
+}
+
 // this will get the nodes IPv4 address and return it as a 32 bit integer
 uint32_t RhpmanApp::GetID() {
   Ptr<Ipv4> ipv4 = GetNode()->GetObject<Ipv4>();
@@ -311,6 +362,13 @@ uint32_t RhpmanApp::GetID() {
   // ((addr >> 8) & 0x00ff) << "." << ((addr) & 0x00ff) << "\n";
 
   return addr;
+}
+
+// this will generate the ID value to use for the requests this is a static function that should be
+// called to generate all the ids to ensure they are unique
+uint64_t RhpmanApp::GenerateRequestID() {
+  static uint64_t id = 0;
+  return ++id;
 }
 
 // ================================================
@@ -337,7 +395,7 @@ void RhpmanApp::LookupTimeout(uint64_t requestID) {
   if (it != m_pendingLookups.end()) {
     mapping = m_lookupMapping.find(requestID);
 
-    if (!m_failed.IsNull()) m_failed(requestID, mapping->second);
+    if (!m_failed.IsNull()) m_failed(mapping->second);
     m_pendingLookups.erase(it);
   }
 }
