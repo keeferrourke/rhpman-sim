@@ -109,6 +109,14 @@ This project is formatted according to the `.clang-format` file included in this
 repository. It intentionally deviates from the code style used by the ns-3
 library and simulator developers.
 
+
+## Important assumptions
+
+This **MUST** be run only on IPv4 based networks, the node ID that is used is a 32 bit
+identifier that is equal to the IPv4 address of the node.
+This ID is used to communicate and assign the nodes as replica holder nodes.
+This could be modified to use IPv6 addresses by using a 128 bit value instead. 
+
 ## License
 
 While ns-3 is itself licensed under the GNU General Public License v2, the code
