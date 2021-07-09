@@ -193,7 +193,7 @@ int main(int argc, char* argv[]) {
   }
   internet.Install(allAdHocNodes);
   Ipv4AddressHelper adhocAddresses;
-  adhocAddresses.SetBase("1.1.1.0", "255.255.255.255");
+  adhocAddresses.SetBase("1.1.1.0", "255.255.255.0");
   auto adhocInterfaces = adhocAddresses.Assign(adhocDevices);
 
   // Install the RHPMAN Scheme onto each node.
