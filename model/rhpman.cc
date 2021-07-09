@@ -149,7 +149,6 @@ void RhpmanApp::StartApplication() {
   }
 
   // TODO: Schedule events.
-
   m_state = State::RUNNING;
 }
 
@@ -188,17 +187,49 @@ bool RhpmanApp::Save(DataItem* data) {
 // ================================================
 
 // send the broadcast to all h_r nodes to start a new election
-void RhpmanApp::TriggerElection() { m_min_election_time = Simulator::Now() + m_election_cooldown; }
+void RhpmanApp::SendStartElection() {
+  // just send the broadcast
+}
 
 void RhpmanApp::SendPing() {
   // calculate fitness
   // check if replicating node
   // send UDP ping to h or h_r hops
 
-
   // schedule next ping
   if (m_state == State::RUNNING) {
-    Simulator::Schedule(m_election_timeout, &RhpmanApp::SendPing, this);
+    Simulator::Schedule(m_ping_cooldown, &RhpmanApp::SendPing, this);
+  }
+}
+
+// broadcast fitness value to all nodes in h_r hops
+void RhpmanApp::SendFitness() {
+  // send UDP broadcast
+  // set TTL to configure the distance it can travel
+}
+
+// this will take the IP address of the new node to become a replicating node
+// if the node is stepping up then this should be set to the current ip
+// if the node is stepping down this should be 0
+void RhpmanApp::SendRoleChange(uint32_t newReplicationNode) {
+  // send broadcast to h_r nodes
+}
+
+// ================================================
+//  event schedulers
+// ================================================
+
+void RhpmanApp::ScheduleElectionCheck() {
+  // schedule checking election results
+  if (m_state == State::RUNNING) {
+    Simulator::Schedule(m_election_timeout, &RhpmanApp::CheckElectionResults, this);
+  }
+}
+
+void RhpmanApp::ScheduleElectionWatchdog() {
+  if (m_state == State::RUNNING) {
+    m_election_watchdog_event =
+        Simulator::Schedule(m_election_watchdog_timeout, &RhpmanApp::ElectionWatchDog, this);
   }
 }
 
@@ -206,16 +237,89 @@ void RhpmanApp::SendPing() {
 //  message handlers
 // ================================================
 
-void RhpmanApp::HandlePing(uint64_t nodeID, bool isReplication) {
+void RhpmanApp::HandlePing(uint32_t nodeID, bool isReplication) {
   // reset the watchdog timer
   if (isReplication && m_election_watchdog_event.IsRunning()) {
     m_election_watchdog_event.Cancel();
-
-    if (m_state == State::RUNNING) {
-      m_election_watchdog_event =
-          Simulator::Schedule(m_election_timeout, &RhpmanApp::ElectionWatchDog, this);
-    }
+    ScheduleElectionWatchdog();
   }
+}
+
+// this will handle updating the nodes in the replication node list
+// step up: old === new             -> insert into list
+// step down: new == 0              -> remove from list
+// handover: old != new, new != 0   -> remove old from list, insert new into list
+void RhpmanApp::HandleModeChange(uint32_t oldNode, uint32_t newNode) {
+  if (oldNode == newNode) {
+    m_replicating_nodes.insert(newNode);
+  } else if (newNode == 0) {
+    m_replicating_nodes.erase(oldNode);
+  } else {
+    m_replicating_nodes.erase(oldNode);
+    m_replicating_nodes.insert(newNode);
+  }
+}
+
+void RhpmanApp::HandleElectionRequest() {
+  // check if currently running an election
+  if (Simulator::Now() < m_min_election_time) {
+    NS_LOG_DEBUG("too early to run another election");
+    return;
+  }
+
+  RunElection();
+}
+
+void RhpmanApp::HandleElectionFitness(uint32_t nodeID, double fitness) {
+  m_peerFitness[nodeID] = fitness;
+}
+
+// ================================================
+//   helpers
+// ================================================
+
+void RhpmanApp::RunElection() {
+  m_min_election_time = Simulator::Now() + m_election_cooldown;
+
+  CalculateElectionFitness();
+  SendFitness();
+  ScheduleElectionCheck();
+}
+
+// this helper will convert the new role to the ip address that should be sent
+void RhpmanApp::MakeReplicaHolderNode() {
+  m_role = Role::REPLICATING;
+  SendRoleChange(GetID());
+}
+
+// this helper will convert the new role to the ip address that should be sent
+void RhpmanApp::MakeNonReplicaHolderNode() {
+  m_role = Role::NON_REPLICATING;
+  SendRoleChange(0);
+}
+
+// this will get the nodes IPv4 address and return it as a 32 bit integer
+uint32_t RhpmanApp::GetID() {
+  Ptr<Ipv4> ipv4 = GetNode()->GetObject<Ipv4>();
+  Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1, 0);
+  Ipv4Address ipAddr = iaddr.GetLocal();
+
+  uint32_t addr = ipAddr.Get();
+
+  // This next line will print the ipv4 address in a.b.c.d format
+  // std::cout << "addr: " << ((addr >> 24) & 0x00ff) << "." << ((addr >> 16) & 0x00ff) << "." <<
+  // ((addr >> 8) & 0x00ff) << "." << ((addr) & 0x00ff) << "\n";
+
+  return addr;
+}
+
+// ================================================
+//  calculation helpers
+// ================================================
+
+double RhpmanApp::CalculateElectionFitness() {
+  m_myFitness = 0;
+  return m_myFitness;
 }
 
 // ================================================
@@ -249,7 +353,29 @@ void RhpmanApp::ElectionWatchDog() {
   }
 
   NS_LOG_DEBUG("Cant connect to any replicating nodes, triggering an election");
-  TriggerElection();
+
+  SendStartElection();
+  RunElection();
+}
+
+// this will be triggered after an election delay to check to see if the current node should become
+// a replication node announce to all the other nodes the results if the status is changing
+void RhpmanApp::CheckElectionResults() {
+  bool highest = true;
+  for (std::map<uint32_t, double>::iterator it = m_peerFitness.begin(); it != m_peerFitness.end();
+       ++it) {
+    if (m_myFitness < it->second) {
+      highest = false;
+      break;
+    }
+  }
+
+  Role oldRole = m_role;
+  if (highest) {
+    MakeReplicaHolderNode();
+  } else if (oldRole == Role::REPLICATING && !highest) {
+    MakeNonReplicaHolderNode();
+  }
 }
 
 // ================================================

@@ -109,23 +109,44 @@ class RhpmanApp : public Application {
 
   // timeouts
   Time m_request_timeout;
+  Time m_election_watchdog_timeout;  // this is the timeout used
   Time m_election_timeout;
   Time m_election_cooldown;
+  Time m_ping_cooldown;
   Time m_min_election_time;  // this is the earliest time that another election is allowed to be
                              // requested by a node
 
   // event handlers
   void LookupTimeout(uint64_t requestID);
   void ElectionWatchDog();
+  void CheckElectionResults();
 
   EventId m_election_watchdog_event;
 
   // event triggers
-  void TriggerElection();
+  void SendStartElection();
   void SendPing();
+  void SendFitness();
+  void SendRoleChange(uint32_t newReplicationNode);
+
+  // schedulers
+  void ScheduleElectionCheck();
+  void ScheduleElectionWatchdog();
+
+  // other helpers
+  void RunElection();
+  void MakeReplicaHolderNode();
+  void MakeNonReplicaHolderNode();
+  uint32_t GetID();
+
+  // calculation helpers
+  double CalculateElectionFitness();
 
   // message handlers
-  void HandlePing(uint64_t nodeID, bool isReplication);
+  void HandlePing(uint32_t nodeID, bool isReplication);
+  void HandleModeChange(uint32_t oldNode, uint32_t newNode);
+  void HandleElectionRequest();
+  void HandleElectionFitness(uint32_t nodeID, double fitness);
 
   // data storage for the node
   uint32_t m_storageSpace;
@@ -143,6 +164,14 @@ class RhpmanApp : public Application {
 
   std::set<uint64_t> m_pendingLookups;
   std::map<uint64_t, uint64_t> m_lookupMapping;
+
+  // replication values
+
+  std::map<uint32_t, double> m_peerFitness;
+
+  double m_myFitness;
+  std::set<uint32_t>
+      m_replicating_nodes;  // this is a list of the current replicating nodes that is known about
 };
 
 };  // namespace rhpman
