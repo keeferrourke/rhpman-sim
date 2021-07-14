@@ -148,6 +148,9 @@ void RhpmanApp::StartApplication() {
     m_socket->Bind();
   }
 
+  m_storage.Init(m_storageSpace);
+  m_buffer.Init(m_bufferSpace);
+
   // TODO: Schedule events.
   m_state = State::RUNNING;
 }
@@ -170,11 +173,22 @@ void RhpmanApp::StopApplication() {
 // this is public and is how any data lookup is made
 void RhpmanApp::Lookup(uint64_t id) {
   // check cache
-  DataItem* item = GetItem(id);
+  DataItem* item = m_storage.GetItem(id);
   if (item != NULL) {
     if (!m_success.IsNull()) m_success(item);
     return;
   }
+
+#if defined(__RHPMAN_OPTIONAL_CHECK_BUFFER)
+
+  // check the data items in the buffer
+  DataItem* item = m_buffer.GetItem(id);
+  if (item != NULL) {
+    if (!m_success.IsNull()) m_success(item);
+    return;
+  }
+
+#endif  // __RHPMAN_OPTIONAL_CHECK_BUFFER
 
   // ask peers
   if (m_replicating_nodes.size() != 0) {
@@ -188,7 +202,7 @@ void RhpmanApp::Lookup(uint64_t id) {
 // this is public and is how new data items are stored in the network
 // if there is no more space in the local cache false is returned, otherwise it is true
 bool RhpmanApp::Save(DataItem* data) {
-  bool status = StoreItem(data);
+  bool status = m_storage.StoreItem(data);
   SendToReplicaHolders(data);
 
   return status;
@@ -198,15 +212,22 @@ bool RhpmanApp::Save(DataItem* data) {
 //  send messages
 // ================================================
 
+void RhpmanApp::SendProbablisticData(DataItem* data) {
+  // check all nodes profiles
+  std::set<uint32_t> addresses = GetRecipientAddresses(m_forwardingThreshold);
+}
+
 // send the broadcast to all h_r nodes to start a new election
 void RhpmanApp::SendStartElection() {
   // just send the broadcast
 }
 
 void RhpmanApp::SendPing() {
-  // calculate fitness
+  // calculate profile
   // check if replicating node
   // send UDP ping to h or h_r hops
+
+  // double profile = CalculateProfile();
 
   // schedule next ping
   if (m_state == State::RUNNING) {
@@ -231,6 +252,10 @@ void RhpmanApp::SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dat
   // send direct message to peer
 }
 
+void RhpmanApp::SendSyncResponse(uint64_t requestID, uint32_t nodeID, DataItem* data) {
+  // send direct message to peer
+}
+
 void RhpmanApp::SendSyncStore(uint32_t nodeID, DataItem* data) {
   // send direct message to peer
 }
@@ -240,33 +265,72 @@ void RhpmanApp::SendSyncStore(uint32_t nodeID, DataItem* data) {
 // ================================================
 
 void RhpmanApp::ScheduleElectionCheck() {
+  if (m_state != State::RUNNING) return;
+
   // schedule checking election results
-  if (m_state == State::RUNNING) {
-    Simulator::Schedule(m_election_timeout, &RhpmanApp::CheckElectionResults, this);
-  }
+  Simulator::Schedule(m_election_timeout, &RhpmanApp::CheckElectionResults, this);
 }
 
 void RhpmanApp::ScheduleElectionWatchdog() {
-  if (m_state == State::RUNNING) {
-    m_election_watchdog_event =
-        Simulator::Schedule(m_election_watchdog_timeout, &RhpmanApp::ElectionWatchDog, this);
-  }
+  if (m_state != State::RUNNING) return;
+
+  m_election_watchdog_event =
+      Simulator::Schedule(m_election_watchdog_timeout, &RhpmanApp::ElectionWatchDog, this);
 }
 
 void RhpmanApp::ScheduleLookupTimeout(uint64_t requestID, uint64_t dataID) {
-  if (m_state == State::RUNNING) {
-    EventId event =
-        Simulator::Schedule(m_request_timeout, &RhpmanApp::LookupTimeout, this, requestID);
-    m_pendingLookups.insert(requestID);
-    m_lookupMapping[requestID] = dataID;
+  if (m_state != State::RUNNING) return;
+
+  EventId event =
+      Simulator::Schedule(m_request_timeout, &RhpmanApp::LookupTimeout, this, requestID);
+  m_pendingLookups.insert(requestID);
+  m_lookupMapping[requestID] = dataID;
+}
+
+void RhpmanApp::ScheduleProfileTimeout(uint32_t nodeID) {
+  if (m_state != State::RUNNING) return;
+
+  EventId e = m_profileTimeouts[nodeID];
+
+  if (e.IsRunning()) {
+    e.Cancel();
   }
+
+  m_profileTimeouts[nodeID] =
+      Simulator::Schedule(m_profile_timeout, &RhpmanApp::ProfileTimeout, this, nodeID);
+}
+
+void RhpmanApp::ScheduleReplicaNodeTimeout(uint32_t nodeID) {
+  if (m_state != State::RUNNING) return;
+
+  EventId e = m_replicationNodeTimeouts[nodeID];
+
+  if (e.IsRunning()) {
+    e.Cancel();
+  }
+
+  m_replicationNodeTimeouts[nodeID] = Simulator::
+      Schedule(m_missing_replication_timeout, &RhpmanApp::ReplicationNodeTimeout, this, nodeID);
 }
 
 // ================================================
 //  message handlers
 // ================================================
 
-void RhpmanApp::HandlePing(uint32_t nodeID, bool isReplication) {
+void RhpmanApp::HandlePing(uint32_t nodeID, double profile, bool isReplication) {
+  m_peerProfiles[nodeID] = profile;
+  ScheduleProfileTimeout(nodeID);
+
+// if the peer has a higher value then the current node, send items in the buffer to that node
+// this is optional
+#if defined(__RHPMAN_OPTIONAL_CARRIER_FORWARDING)
+
+  if (profile > CalculateProfile()) {
+    TransferBuffer(nodeID);
+  }
+
+#endif  // __RHPMAN_OPTIONAL_CARRIER_FORWARDING
+
   // reset the watchdog timer
   if (isReplication && m_election_watchdog_event.IsRunning()) {
     m_election_watchdog_event.Cancel();
@@ -301,6 +365,58 @@ void RhpmanApp::HandleElectionRequest() {
 
 void RhpmanApp::HandleElectionFitness(uint32_t nodeID, double fitness) {
   m_peerFitness[nodeID] = fitness;
+}
+
+void RhpmanApp::HandleSyncLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID) {
+  DataItem* res = m_storage.GetItem(dataID);
+
+#if defined(__RHPMAN_OPTIONAL_CHECK_BUFFER)
+
+  // check buffer for in transit messages
+  // not mentioned in the origianal paper
+  if (res == NULL) {
+    res = m_buffer.GetItem(dataID);
+  }
+
+#endif  // __RHPMAN_OPTIONAL_CHECK_BUFFER
+
+  if (res != NULL) {
+    return SendSyncResponse(requestID, nodeID, res);
+  }
+
+  // if not found do nothing, let the client timeout??
+}
+
+// this will handle the synchonous store message
+// if the node is a replicating node then it will be stored in storage, and stored in the buffer
+// otherwise
+void RhpmanApp::HandleStore(DataItem* data) {
+  Storage storage = m_role == Role::REPLICATING ? m_storage : m_buffer;
+
+  bool res = storage.StoreItem(data);
+  if (!res) {
+    NS_LOG_DEBUG("not enough space to store the data item");
+  }
+}
+
+void RhpmanApp::HandleProbabalisticStore(uint32_t nodeID, DataItem* data) {
+  // check to see if the node already has the data item in the buffer
+  if (m_storage.HasItem(data->getID()) || m_buffer.HasItem(data->getID())) return;
+
+  // if it is a replicating node store the data item
+  if (m_role == Role::REPLICATING) {
+    bool res = m_storage.StoreItem(data);
+    if (!res) {
+      NS_LOG_DEBUG("not enough space to store the data item");
+    }
+    return;
+  }
+
+  // store in the buffer if there is space
+  bool res = m_buffer.StoreItem(data);
+  if (!res) {
+    NS_LOG_DEBUG("not enough space in the buffer to store the data item");
+  }
 }
 
 // ================================================
@@ -341,6 +457,8 @@ void RhpmanApp::LookupFromReplicaHolders(uint64_t dataID) {
   ScheduleLookupTimeout(requestID, dataID);
 }
 
+// this will be called after the node stores a new data item
+// this will send it synchronously
 void RhpmanApp::SendToReplicaHolders(DataItem* data) {
   for (std::set<uint32_t>::iterator it = m_replicating_nodes.begin();
        it != m_replicating_nodes.end();
@@ -371,6 +489,35 @@ uint64_t RhpmanApp::GenerateRequestID() {
   return ++id;
 }
 
+// reset the fitness map values, call this after checking the election results
+void RhpmanApp::ResetFitnesses() {
+  m_myFitness = 0;
+  m_peerFitness.clear();
+}
+
+std::set<uint32_t> RhpmanApp::GetRecipientAddresses(double sigma) {
+  std::set<uint32_t> addresses;
+
+  for (std::map<uint32_t, double>::iterator it = m_peerProfiles.begin(); it != m_peerProfiles.end();
+       ++it) {
+    if (it->second >= sigma) addresses.insert(it->first);
+  }
+
+  return addresses;
+}
+
+// call this to send the all of the contents of the buffer to a new node
+void RhpmanApp::TransferBuffer(uint32_t nodeID) {
+  std::vector<DataItem*> items = m_buffer.GetAll();
+
+  for (std::vector<DataItem*>::iterator it = items.begin(); it != items.end(); ++it) {
+    SendSyncStore(nodeID, *it);
+  }
+
+  // remove items from the buffer once they have been transfered so they cant be forwarded again
+  m_buffer.ClearStorage();
+}
+
 // ================================================
 //  calculation helpers
 // ================================================
@@ -378,6 +525,26 @@ uint64_t RhpmanApp::GenerateRequestID() {
 double RhpmanApp::CalculateElectionFitness() {
   m_myFitness = 0;
   return m_myFitness;
+}
+
+// this is the value of P_ij
+double RhpmanApp::CalculateProfile() {
+  if (m_role == Role::REPLICATING) return 1;
+
+  return m_wcdc * CalculateChangeDegree() + m_wcol * CalculateColocation();
+}
+
+// this is the U_cdc value
+double RhpmanApp::CalculateChangeDegree() { return 0; }
+
+// this is the U_col value
+// it is 1 if there is a replication node within h, 0 otherwise
+double RhpmanApp::CalculateColocation() {
+  if (m_role == Role::REPLICATING) return 1;
+
+  // check routing table here
+
+  return 0;
 }
 
 // ================================================
@@ -428,6 +595,8 @@ void RhpmanApp::CheckElectionResults() {
     }
   }
 
+  ResetFitnesses();
+
   Role oldRole = m_role;
   if (highest) {
     MakeReplicaHolderNode();
@@ -436,81 +605,17 @@ void RhpmanApp::CheckElectionResults() {
   }
 }
 
+// this will remove the nodes information from the probabilistic table
+void RhpmanApp::ProfileTimeout(uint32_t nodeID) { m_peerProfiles.erase(nodeID); }
+
+// this will remove the replication node from the list if missed its checkins
+void RhpmanApp::ReplicationNodeTimeout(uint32_t nodeID) { m_replicating_nodes.erase(nodeID); }
+
 // ================================================
 // storage array functions
 // ================================================
 
-// this will set all possitions in the storage list to NULL so it can be used
-void RhpmanApp::InitStorage() {
-  m_storage.resize(m_storageSpace);
-  for (uint32_t i = 0; i < m_storageSpace; i++) {
-    m_storage[i] = NULL;
-  }
-}
-
-// this will do the actual storage. will store the item not a copy
-// true if there was space false otherwise
-bool RhpmanApp::StoreItem(DataItem* data) {
-  bool saved = false;
-  for (uint32_t i = 0; i < m_storageSpace; i++) {
-    if (m_storage[i] == NULL) {
-      m_storage[i] = data;
-      saved = true;
-      break;
-    }
-  }
-
-  return saved;
-}
-
-// this will return a pointer to the data item if it is found or NULL if it is not
-DataItem* RhpmanApp::GetItem(uint64_t dataID) {
-  DataItem* found = NULL;
-
-  for (uint32_t i = 0; i < m_storageSpace; i++) {
-    if (m_storage[i] != NULL && m_storage[i]->getID() == dataID) {
-      found = m_storage[i];
-      break;
-    }
-  }
-
-  return found;
-}
-
-// return true if the item was removed from storage, false if it was not found
-bool RhpmanApp::RemoveItem(uint64_t dataID) {
-  for (uint32_t i = 0; i < m_storageSpace; i++) {
-    if (m_storage[i] != NULL && m_storage[i]->getID() == dataID) {
-      free(m_storage[i]);
-      m_storage[i] = NULL;
-      return true;
-    }
-  }
-
-  return false;
-}
-
-// this will empty all data items from storage
-void RhpmanApp::ClearStorage() {
-  for (uint32_t i = 0; i < m_storageSpace; i++) {
-    if (m_storage[i] != NULL) {
-      free(m_storage[i]);
-      m_storage[i] = NULL;
-    }
-  }
-}
-
 // this is a helper and will return the number of data items that can be stored in local storage
-uint32_t RhpmanApp::GetFreeSpace() {
-  uint32_t count = 0;
-
-  for (uint32_t i = 0; i < m_storageSpace; i++) {
-    if (m_storage[i] != NULL) {
-      count++;
-    }
-  }
-
-  return m_storageSpace - count;
-}
+uint32_t RhpmanApp::GetFreeSpace() { return m_storage.GetFreeSpace(); }
 
 }  // namespace rhpman

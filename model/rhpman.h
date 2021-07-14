@@ -24,6 +24,12 @@
 #ifndef __rhpman_h
 #define __rhpman_h
 
+// Uncomment this to enable the optional carrier forwarding
+#define __RHPMAN_OPTIONAL_CARRIER_FORWARDING
+
+// uncomment to enable the optional checking the data items in the buffer when doing a lookup
+// #define __RHPMAN_OPTIONAL_CHECK_BUFFER
+
 #include <map>
 #include <set>  // std::set
 
@@ -41,6 +47,7 @@
 #include "ns3/uinteger.h"
 
 #include "dataItem.h"
+#include "storage.h"
 //#include "proto/messages.pb.h"
 
 namespace rhpman {
@@ -109,7 +116,10 @@ class RhpmanApp : public Application {
 
   // timeouts
   Time m_request_timeout;
-  Time m_election_watchdog_timeout;  // this is the timeout used
+  Time m_election_watchdog_timeout;    // this is the timeout used
+  Time m_missing_replication_timeout;  // if a replication node does not checkin before this time it
+                                       // is removed from the list
+  Time m_profile_timeout;
   Time m_election_timeout;
   Time m_election_cooldown;
   Time m_ping_cooldown;
@@ -120,21 +130,27 @@ class RhpmanApp : public Application {
   void LookupTimeout(uint64_t requestID);
   void ElectionWatchDog();
   void CheckElectionResults();
+  void ProfileTimeout(uint32_t nodeID);
+  void ReplicationNodeTimeout(uint32_t nodeID);
 
   EventId m_election_watchdog_event;
 
   // event triggers
+  void SendProbablisticData(DataItem* data);
   void SendStartElection();
   void SendPing();
   void SendFitness();
   void SendRoleChange(uint32_t newReplicationNode);
   void SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dataID);
   void SendSyncStore(uint32_t nodeID, DataItem* data);
+  void SendSyncResponse(uint64_t requestID, uint32_t nodeID, DataItem* data);
 
   // schedulers
   void ScheduleElectionCheck();
   void ScheduleElectionWatchdog();
   void ScheduleLookupTimeout(uint64_t requestID, uint64_t dataID);
+  void ScheduleProfileTimeout(uint32_t nodeID);
+  void ScheduleReplicaNodeTimeout(uint32_t nodeID);
 
   // other helpers
   void RunElection();
@@ -144,25 +160,31 @@ class RhpmanApp : public Application {
   void SendToReplicaHolders(DataItem* data);
   uint32_t GetID();
   static uint64_t GenerateRequestID();
+  void ResetFitnesses();
+  std::set<uint32_t> GetRecipientAddresses(double sigma);
+  void TransferBuffer(uint32_t nodeID);
 
   // calculation helpers
   double CalculateElectionFitness();
+  double CalculateProfile();
+  double CalculateChangeDegree();
+  double CalculateColocation();
 
   // message handlers
-  void HandlePing(uint32_t nodeID, bool isReplication);
+  void HandlePing(uint32_t nodeID, double profile, bool isReplication);
   void HandleModeChange(uint32_t oldNode, uint32_t newNode);
   void HandleElectionRequest();
   void HandleElectionFitness(uint32_t nodeID, double fitness);
+  void HandleSyncLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID);
+  void HandleStore(DataItem* data);
+  void HandleProbabalisticStore(uint32_t nodeID, DataItem* data);
 
   // data storage for the node
   uint32_t m_storageSpace;
-  std::vector<DataItem*> m_storage;
+  uint32_t m_bufferSpace;
 
-  void InitStorage();
-  bool StoreItem(DataItem* data);
-  DataItem* GetItem(uint64_t dataID);
-  bool RemoveItem(uint64_t dataID);
-  void ClearStorage();
+  Storage m_storage;
+  Storage m_buffer;
 
   // callbacks for lookup requests
   Callback<void, uint64_t> m_failed;
@@ -174,6 +196,10 @@ class RhpmanApp : public Application {
   // replication values
 
   std::map<uint32_t, double> m_peerFitness;
+
+  std::map<uint32_t, double> m_peerProfiles;
+  std::map<uint32_t, EventId> m_profileTimeouts;
+  std::map<uint32_t, EventId> m_replicationNodeTimeouts;
 
   double m_myFitness;
   std::set<uint32_t> m_replicating_nodes;

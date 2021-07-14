@@ -13,6 +13,7 @@ def build(bld):
     module.source = [
         'model/rhpman.cc',
         'model/dataItem.cc',
+        'model/storage.cc',
         'model/nsutil.cc',
         'model/logging.cc',
         'helper/rhpman-helper.cc',
@@ -35,6 +36,7 @@ def build(bld):
     headers.module = 'rhpman'
     headers.source = [
         'model/rhpman.h',
+        'model/storage.h',
         'model/dataItem.h',
       #  'model/util.h',
         'helper/rhpman-helper.h',

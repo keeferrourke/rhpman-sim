@@ -30,7 +30,7 @@ namespace rhpman {
 std::pair<SimulationParameters, bool> SimulationParameters::parse(int argc, char* argv[]) {
   /* Default simulation values. */
   // Simulation run time.
-  double optRuntime = 40.0_minutes;
+  double optRuntime = 5.0_minutes;
 
   // Simulation seed.
   uint32_t optSeed = 1;
