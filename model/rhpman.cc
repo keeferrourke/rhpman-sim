@@ -145,11 +145,17 @@ void RhpmanApp::StartApplication() {
 
   if (m_socket == 0) {
     m_socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
-    m_socket->Bind();
+    InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), m_port);
+
+    if (m_socket->Bind(local) == -1) {
+      NS_FATAL_ERROR("Failed to bind socket");
+    }
   }
 
   m_storage.Init(m_storageSpace);
   m_buffer.Init(m_bufferSpace);
+
+  m_socket_recv->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
 
   // TODO: Schedule events.
   m_state = State::RUNNING;
@@ -163,6 +169,12 @@ void RhpmanApp::StopApplication() {
   }
   if (m_state == State::STOPPED) {
     NS_LOG_DEBUG("Ignoring RhpmanApp::StopApplication on already stopped instance");
+  }
+
+  if (m_socket != 0) {
+    m_socket->Close();
+    m_socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
+    m_socket = 0;
   }
 
   // TODO: Cancel events.
@@ -182,7 +194,7 @@ void RhpmanApp::Lookup(uint64_t id) {
 #if defined(__RHPMAN_OPTIONAL_CHECK_BUFFER)
 
   // check the data items in the buffer
-  DataItem* item = m_buffer.GetItem(id);
+  item = m_buffer.GetItem(id);
   if (item != NULL) {
     if (!m_success.IsNull()) m_success(item);
     return;
@@ -228,11 +240,6 @@ void RhpmanApp::SendPing() {
   // send UDP ping to h or h_r hops
 
   // double profile = CalculateProfile();
-
-  // schedule next ping
-  if (m_state == State::RUNNING) {
-    Simulator::Schedule(m_ping_cooldown, &RhpmanApp::SendPing, this);
-  }
 }
 
 // broadcast fitness value to all nodes in h_r hops
@@ -263,6 +270,15 @@ void RhpmanApp::SendSyncStore(uint32_t nodeID, DataItem* data) {
 // ================================================
 //  event schedulers
 // ================================================
+
+void RhpmanApp::SchedulePing() {
+  if (m_state != State::RUNNING) return;
+
+  SendPing();
+
+  // schedule checking election results
+  Simulator::Schedule(m_ping_cooldown, &RhpmanApp::SchedulePing, this);
+}
 
 void RhpmanApp::ScheduleElectionCheck() {
   if (m_state != State::RUNNING) return;
@@ -316,6 +332,36 @@ void RhpmanApp::ScheduleReplicaNodeTimeout(uint32_t nodeID) {
 // ================================================
 //  message handlers
 // ================================================
+
+// this will handle all the inital messages to be received by the node
+// and will delegate the specfic handling to the separate handlers
+void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
+  Ptr<Packet> packet;
+  Address from;
+  Address localAddress;
+
+  while ((packet = socket->RecvFrom(from))) {
+    socket->GetSockName(localAddress);
+    NS_LOG_INFO(
+        "At time " << Simulator::Now().GetSeconds() << "s client received " << packet->GetSize()
+                   << " bytes from " << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
+                   << InetSocketAddress::ConvertFrom(from).GetPort());
+
+    m_rxTrace(packet);
+    m_rxTraceWithAddresses(packet, from, localAddress);
+
+    uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
+    uint32_t size = packet->GetSize();
+    uint8_t* payload = new uint8_t[size];
+    packet->CopyData(payload, size);
+
+    // parse bytes into protobuf object
+
+    // switch based on message type
+
+    // do handling here
+  }
+}
 
 void RhpmanApp::HandlePing(uint32_t nodeID, double profile, bool isReplication) {
   m_peerProfiles[nodeID] = profile;

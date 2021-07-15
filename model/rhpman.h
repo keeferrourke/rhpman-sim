@@ -28,7 +28,7 @@
 #define __RHPMAN_OPTIONAL_CARRIER_FORWARDING
 
 // uncomment to enable the optional checking the data items in the buffer when doing a lookup
-// #define __RHPMAN_OPTIONAL_CHECK_BUFFER
+#define __RHPMAN_OPTIONAL_CHECK_BUFFER
 
 #include <map>
 #include <set>  // std::set
@@ -101,6 +101,7 @@ class RhpmanApp : public Application {
   void ExchangeProfiles();
 
   // Member fields.
+  uint16_t m_port;  //!< Remote peer port
 
   State m_state;
   Role m_role;
@@ -151,6 +152,7 @@ class RhpmanApp : public Application {
   void ScheduleLookupTimeout(uint64_t requestID, uint64_t dataID);
   void ScheduleProfileTimeout(uint32_t nodeID);
   void ScheduleReplicaNodeTimeout(uint32_t nodeID);
+  void SchedulePing();
 
   // other helpers
   void RunElection();
@@ -171,6 +173,7 @@ class RhpmanApp : public Application {
   double CalculateColocation();
 
   // message handlers
+  void HandleRequest(Ptr<Socket> socket);
   void HandlePing(uint32_t nodeID, double profile, bool isReplication);
   void HandleModeChange(uint32_t oldNode, uint32_t newNode);
   void HandleElectionRequest();
