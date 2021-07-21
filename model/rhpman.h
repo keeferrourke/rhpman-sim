@@ -176,11 +176,15 @@ class RhpmanApp : public Application {
   std::set<uint32_t> FilterAddresses(
       const std::set<uint32_t> addresses,
       const std::set<uint32_t> exclude);
+  std::set<uint32_t> FilterAddress(const std::set<uint32_t> addresses, uint32_t exclude);
   void TransferBuffer(uint32_t nodeID);
   DataItem* CheckLocalStorage(uint64_t dataID);
 
   Ptr<Socket> SetupSocket(uint16_t port, uint32_t ttl);
   void DestroySocket(Ptr<Socket> socket);
+
+  void SemiProbabilisticSend(Ptr<Packet> message, uint32_t srcAddr, double sigma);
+  void SendToNodes(Ptr<Packet> message, const std::set<uint32_t> nodes);
 
   // calculation helpers
   double CalculateElectionFitness();
@@ -200,10 +204,13 @@ class RhpmanApp : public Application {
 
   // message generators
   Ptr<Packet> GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma);
+  Ptr<Packet> GenerateStore(const DataItem* data);
 
   // data storage for the node
   uint32_t m_storageSpace;
   uint32_t m_bufferSpace;
+
+  uint32_t m_address;
 
   Storage m_storage;
   Storage m_buffer;

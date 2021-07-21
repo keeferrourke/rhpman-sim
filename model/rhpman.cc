@@ -156,6 +156,8 @@ void RhpmanApp::StartApplication() {
   m_storage.Init(m_storageSpace);
   m_buffer.Init(m_bufferSpace);
 
+  m_address = GetID();
+
   // TODO: Schedule events.
   m_state = State::RUNNING;
 
@@ -234,9 +236,7 @@ void RhpmanApp::Lookup(uint64_t id) {
 
   uint64_t requestID = GenerateMessageID();
   Ptr<Packet> message = GenerateLookup(requestID, id, sigma);
-  for (std::set<uint32_t>::iterator it = addresses.begin(); it != addresses.end(); ++it) {
-    SendMessage(Ipv4Address(*it), message);
-  }
+  SendToNodes(message, addresses);
 
   ScheduleLookupTimeout(requestID, id);
 }
@@ -245,9 +245,27 @@ void RhpmanApp::Lookup(uint64_t id) {
 // if there is no more space in the local cache false is returned, otherwise it is true
 bool RhpmanApp::Save(DataItem* data) {
   bool status = m_storage.StoreItem(data);
-  SendToReplicaHolders(data);
+
+  Ptr<Packet> message = GenerateStore(data);
+  SemiProbabilisticSend(message, 0, m_forwardingThreshold);
 
   return status;
+}
+
+void RhpmanApp::SemiProbabilisticSend(Ptr<Packet> message, uint32_t srcAddr, double sigma) {
+  SendToNodes(message, m_replicating_nodes);
+
+  std::set<uint32_t> nodes = GetRecipientAddresses(sigma);
+  nodes = FilterAddresses(nodes, m_replicating_nodes);
+  nodes = FilterAddress(nodes, srcAddr);
+
+  SendToNodes(message, nodes);
+}
+
+void RhpmanApp::SendToNodes(Ptr<Packet> message, const std::set<uint32_t> nodes) {
+  for (std::set<uint32_t>::iterator it = nodes.begin(); it != nodes.end(); ++it) {
+    SendMessage(Ipv4Address(*it), message);
+  }
 }
 
 // ================================================
@@ -261,8 +279,22 @@ Ptr<Packet> RhpmanApp::GenerateLookup(uint64_t messageID, uint64_t dataID, doubl
 
   rhpman::packets::Request* request = message.mutable_request();
   request->set_data_id(dataID);
-  request->set_requestor(GetID());
+  request->set_requestor(m_address);
   request->set_sigma(sigma);
+
+  return GeneratePacket(message);
+}
+
+Ptr<Packet> RhpmanApp::GenerateStore(const DataItem* data) {
+  rhpman::packets::Message message;
+  message.set_id(GenerateMessageID());
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  rhpman::packets::Store* store = message.mutable_store();
+  rhpman::packets::DataItem* item = store->mutable_data();
+
+  item->set_data_id(data->getID());
+  item->set_data(data->getPayload(), data->getSize());
 
   return GeneratePacket(message);
 }
@@ -286,7 +318,7 @@ static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message) {
 // ================================================
 
 void RhpmanApp::SendMessage(Address dest, Ptr<Packet> packet) {
-  // std::cout << "node: " << GetID() << " - " << Simulator::Now().GetSeconds() << "s\n";
+  // std::cout << "node: " << m_address << " - " << Simulator::Now().GetSeconds() << "s\n";
   // std::cout << "sending " << packet->GetSize() << " bytes\n";
   // m_socket_send->SendTo(packet, 0, dest);
   m_socket_send->Send(packet);
@@ -544,7 +576,7 @@ void RhpmanApp::RunElection() {
 // this helper will convert the new role to the ip address that should be sent
 void RhpmanApp::MakeReplicaHolderNode() {
   m_role = Role::REPLICATING;
-  SendRoleChange(GetID());
+  SendRoleChange(m_address);
 }
 
 // this helper will convert the new role to the ip address that should be sent
@@ -558,12 +590,8 @@ void RhpmanApp::LookupFromReplicaHolders(uint64_t dataID) {
   // create lookup message (use the same ID for each message sent)
   uint64_t requestID = RhpmanApp::GenerateMessageID();
 
-  for (std::set<uint32_t>::iterator it = m_replicating_nodes.begin();
-       it != m_replicating_nodes.end();
-       ++it) {
-    SendSyncLookup(requestID, *it, dataID);
-  }
-
+  Ptr<Packet> message = GenerateLookup(requestID, dataID, m_forwardingThreshold);
+  SendToNodes(message, m_replicating_nodes);
   ScheduleLookupTimeout(requestID, dataID);
 }
 
@@ -624,6 +652,14 @@ std::set<uint32_t> RhpmanApp::FilterAddresses(
   for (std::set<uint32_t>::iterator it = exclude.begin(); it != exclude.end(); ++it) {
     if (filtered.find(*it) != filtered.end()) filtered.erase(*it);
   }
+
+  return filtered;
+}
+
+std::set<uint32_t> RhpmanApp::FilterAddress(const std::set<uint32_t> addresses, uint32_t exclude) {
+  std::set<uint32_t> filtered = addresses;
+
+  if (filtered.find(exclude) != filtered.end()) filtered.erase(exclude);
 
   return filtered;
 }

@@ -7,7 +7,7 @@ message Message {
     uint64 timestamp = 2;
 
     oneof payload {
-        RelicaAnouncement anounce = 4;
+        ReplicationNodeAnouncement anounce = 4;
         Ping ping = 5;
         Request request = 6;
         Response response = 7;
@@ -21,7 +21,7 @@ message Message {
 message ElectionRequest {
 }
 
-message RelicaAnouncement {
+message ReplicationNodeAnouncement {
 }
 
 message ElectionFitness {

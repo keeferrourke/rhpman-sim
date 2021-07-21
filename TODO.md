@@ -5,3 +5,6 @@
   - Figure out how to query number of nodes within $h$ and $h_r$ hops
   - Figure out to how to query number of direct neighbor nodes.
   - Determine how nodes should decide which data they want.
+
+  - determine the correct TTL that should be used for different message types
+    - what should be limited to h_r hops and what is limited to h hops

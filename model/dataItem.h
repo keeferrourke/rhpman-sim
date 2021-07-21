@@ -20,9 +20,9 @@ class DataItem {
   DataItem(uint64_t id, uint32_t size, const uint8_t* payload);  // use this when saving a response
   ~DataItem();
 
-  uint64_t getID();
-  uint32_t getSize();
-  uint8_t* getPayload();
+  uint64_t getID() const;
+  uint32_t getSize() const;
+  uint8_t* getPayload() const;
 };
 
 }  // namespace rhpman

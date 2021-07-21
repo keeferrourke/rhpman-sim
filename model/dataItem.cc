@@ -34,12 +34,12 @@ DataItem::~DataItem() {
   }
 }
 
-uint64_t DataItem::getID() { return dataID; }
+uint64_t DataItem::getID() const { return dataID; }
 
-uint32_t DataItem::getSize() { return size; }
+uint32_t DataItem::getSize() const { return size; }
 
 // Note this Must be freed by the caller, it is a copy of the data item
-uint8_t* DataItem::getPayload() {
+uint8_t* DataItem::getPayload() const {
   if (size == 0 || bytes == NULL) return NULL;
 
   uint8_t* tmp;
