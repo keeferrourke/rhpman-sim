@@ -41,6 +41,8 @@ namespace rhpman {
 
 using namespace ns3;
 
+static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message);
+
 NS_OBJECT_ENSURE_REGISTERED(RhpmanApp);
 
 // static
@@ -137,10 +139,6 @@ void RhpmanApp::StartApplication() {
   NS_LOG_DEBUG("Starting RhpmanApp");
   m_state = State::NOT_STARTED;
 
-  // set the default callbacks so it does not crash
-  m_success = MakeNullCallback<void, DataItem*>();
-  m_failed = MakeNullCallback<void, uint64_t>();
-
   // TODO: I think I need multiple sockets? Maybe not though.
   // - One socket for replication election; broadcast special packet (TODO) to
   //   determine roles present in election neighborhood
@@ -152,7 +150,7 @@ void RhpmanApp::StartApplication() {
   }
 
   if (m_socket_send == 0) {
-    m_socket_send = SetupSocket(APPLICATION_PORT,  m_neighborhoodHops);
+    m_socket_send = SetupSocket(APPLICATION_PORT, m_neighborhoodHops);
   }
 
   m_storage.Init(m_storageSpace);
@@ -162,11 +160,9 @@ void RhpmanApp::StartApplication() {
   m_state = State::RUNNING;
 
   SchedulePing();
-
 }
 
 Ptr<Socket> RhpmanApp::SetupSocket(uint16_t port, uint32_t ttl) {
-
   Ptr<Socket> socket;
 
   socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
@@ -177,7 +173,7 @@ Ptr<Socket> RhpmanApp::SetupSocket(uint16_t port, uint32_t ttl) {
       NS_FATAL_ERROR("Failed to bind socket");
     }
   } else {
-    //socket->Connect(InetSocketAddress(Ipv4Address::GetBroadcast(), port));
+    socket->Connect(InetSocketAddress(Ipv4Address::GetBroadcast(), port));
     socket->SetAllowBroadcast(true);
     socket->SetIpTtl(ttl);
   }
@@ -191,7 +187,6 @@ void RhpmanApp::DestroySocket(Ptr<Socket> socket) {
   socket->Close();
   socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
 }
-
 
 // override
 void RhpmanApp::StopApplication() {
@@ -234,6 +229,16 @@ void RhpmanApp::Lookup(uint64_t id) {
   }
 
   // run semi probabilistic lookup
+  double sigma = CalculateProfile();
+  std::set<uint32_t> addresses = GetRecipientAddresses(sigma);
+
+  uint64_t requestID = GenerateMessageID();
+  Ptr<Packet> message = GenerateLookup(requestID, id, sigma);
+  for (std::set<uint32_t>::iterator it = addresses.begin(); it != addresses.end(); ++it) {
+    SendMessage(Ipv4Address(*it), message);
+  }
+
+  ScheduleLookupTimeout(requestID, id);
 }
 
 // this is public and is how new data items are stored in the network
@@ -246,29 +251,45 @@ bool RhpmanApp::Save(DataItem* data) {
 }
 
 // ================================================
+//  generate messages
+// ================================================
+
+Ptr<Packet> RhpmanApp::GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma) {
+  rhpman::packets::Message message;
+  message.set_id(messageID);
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  rhpman::packets::Request* request = message.mutable_request();
+  request->set_data_id(dataID);
+  request->set_requestor(GetID());
+  request->set_sigma(sigma);
+
+  return GeneratePacket(message);
+}
+
+static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message) {
+  uint32_t size = message.ByteSizeLong();
+  uint8_t* payload = new uint8_t[size];
+
+  if (!message.SerializeToArray(payload, size)) {
+    NS_LOG_ERROR("Failed to serialize the message for transmission");
+  }
+
+  Ptr<Packet> packet = Create<Packet>(payload, size);
+  delete[] payload;
+
+  return packet;
+}
+
+// ================================================
 //  send messages
 // ================================================
 
-
-static Ptr<Packet> GeneratePacket(rhpman::packets::Message message) {
-  uint32_t size = message.ByteSizeLong();
-    uint8_t* payload = new uint8_t[size];
-
-    if (!message.SerializeToArray(payload, size)) {
-      NS_LOG_ERROR("Failed to serialize the message for transmission");
-    }
-
-    Ptr<Packet> packet = Create<Packet>(payload, size);
-    delete[] payload;
-
-    return packet;
-}
-
 void RhpmanApp::SendMessage(Address dest, Ptr<Packet> packet) {
-
-  //std::cout << "node: " << GetID() << " - " << Simulator::Now().GetSeconds() << "s\n";
- // std::cout << "sending " << packet->GetSize() << " bytes\n";
-  m_socket_send->SendTo(packet, 0, dest);
+  // std::cout << "node: " << GetID() << " - " << Simulator::Now().GetSeconds() << "s\n";
+  // std::cout << "sending " << packet->GetSize() << " bytes\n";
+  // m_socket_send->SendTo(packet, 0, dest);
+  m_socket_send->Send(packet);
 }
 
 void RhpmanApp::SendProbablisticData(DataItem* data) {
@@ -291,7 +312,7 @@ void RhpmanApp::SendPing() {
   message.set_timestamp(Simulator::Now().GetMilliSeconds());
 
   rhpman::packets::Ping* ping = message.mutable_ping();
- // ping.setReplicating_node(m_role == Role::REPLICATING);
+  // ping.setReplicating_node(m_role == Role::REPLICATING);
   ping->set_delivery_probability(CalculateProfile());
 
   SendMessage(Ipv4Address::GetBroadcast(), GeneratePacket(message));
@@ -394,8 +415,6 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
   Ptr<Packet> packet;
   Address from;
   Address localAddress;
-      std::cout << "handle\n";
-
 
   while ((packet = socket->RecvFrom(from))) {
     socket->GetSockName(localAddress);
@@ -404,12 +423,12 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
                    << " bytes from " << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                    << InetSocketAddress::ConvertFrom(from).GetPort());
 
-    uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
+    // uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
     uint32_t size = packet->GetSize();
     uint8_t* payload = new uint8_t[size];
     packet->CopyData(payload, size);
 
-    std::cout << "received message from: " << srcAddress << "\n";
+    // std::cout << "received message from: " << srcAddress << "\n";
     // parse bytes into protobuf object
 
     // switch based on message type
@@ -597,6 +616,18 @@ std::set<uint32_t> RhpmanApp::GetRecipientAddresses(double sigma) {
   return addresses;
 }
 
+std::set<uint32_t> RhpmanApp::FilterAddresses(
+    const std::set<uint32_t> addresses,
+    const std::set<uint32_t> exclude) {
+  std::set<uint32_t> filtered = addresses;
+
+  for (std::set<uint32_t>::iterator it = exclude.begin(); it != exclude.end(); ++it) {
+    if (filtered.find(*it) != filtered.end()) filtered.erase(*it);
+  }
+
+  return filtered;
+}
+
 // call this to send the all of the contents of the buffer to a new node
 void RhpmanApp::TransferBuffer(uint32_t nodeID) {
   std::vector<DataItem*> items = m_buffer.GetAll();
@@ -709,23 +740,20 @@ void RhpmanApp::ReplicationNodeTimeout(uint32_t nodeID) { m_replicating_nodes.er
 // this is a helper and will return the number of data items that can be stored in local storage
 uint32_t RhpmanApp::GetFreeSpace() { return m_storage.GetFreeSpace(); }
 
-
 DataItem* RhpmanApp::CheckLocalStorage(uint64_t dataID) {
-
-    // check cache
+  // check cache
   DataItem* item = m_storage.GetItem(dataID);
-  if (item != NULL)  return item;
+  if (item != NULL) return item;
 
 #if defined(__RHPMAN_OPTIONAL_CHECK_BUFFER)
 
   // check the data items in the buffer
   item = m_buffer.GetItem(dataID);
-  if (item != NULL)  return item;
+  if (item != NULL) return item;
 
 #endif  // __RHPMAN_OPTIONAL_CHECK_BUFFER
 
- return NULL;
+  return NULL;
 }
-
 
 }  // namespace rhpman

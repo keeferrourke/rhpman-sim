@@ -82,7 +82,9 @@ class RhpmanApp : public Application {
         m_profileDelay(),
         m_degreeConnectivity(),
         m_socket_recv(0),
-        m_socket_send(0){};
+        m_socket_send(0),
+        m_success(MakeNullCallback<void, DataItem*>()),
+        m_failed(MakeNullCallback<void, uint64_t>()){};
 
   Role GetRole() const;
   State GetState() const;
@@ -115,6 +117,11 @@ class RhpmanApp : public Application {
   std::map<Time, uint32_t> m_degreeConnectivity;
   Ptr<Socket> m_socket_recv;
   Ptr<Socket> m_socket_send;
+
+  // callbacks for lookup requests
+  // callbacks for  requests
+  Callback<void, DataItem*> m_success;
+  Callback<void, uint64_t> m_failed;
 
   // timeouts
   Time m_request_timeout;
@@ -166,6 +173,9 @@ class RhpmanApp : public Application {
   static uint64_t GenerateMessageID();
   void ResetFitnesses();
   std::set<uint32_t> GetRecipientAddresses(double sigma);
+  std::set<uint32_t> FilterAddresses(
+      const std::set<uint32_t> addresses,
+      const std::set<uint32_t> exclude);
   void TransferBuffer(uint32_t nodeID);
   DataItem* CheckLocalStorage(uint64_t dataID);
 
@@ -188,16 +198,15 @@ class RhpmanApp : public Application {
   void HandleStore(DataItem* data);
   void HandleProbabalisticStore(uint32_t nodeID, DataItem* data);
 
+  // message generators
+  Ptr<Packet> GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma);
+
   // data storage for the node
   uint32_t m_storageSpace;
   uint32_t m_bufferSpace;
 
   Storage m_storage;
   Storage m_buffer;
-
-  // callbacks for lookup requests
-  Callback<void, uint64_t> m_failed;
-  Callback<void, DataItem*> m_success;
 
   std::set<uint64_t> m_pendingLookups;
   std::map<uint64_t, uint64_t> m_lookupMapping;

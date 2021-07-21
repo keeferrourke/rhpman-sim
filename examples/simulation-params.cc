@@ -66,7 +66,7 @@ std::pair<SimulationParameters, bool> SimulationParameters::parse(int argc, char
 
   // Link and network parameters.
   std::string optRoutingProtocol = "dsdv";
-  double optWifiRadius = 1000.0_meters;
+  double optWifiRadius = 100.0_meters;
 
   // RHPMAN app parameters.
   double optCarryingThreshold = 0.6;
