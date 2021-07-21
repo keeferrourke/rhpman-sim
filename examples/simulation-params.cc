@@ -30,7 +30,7 @@ namespace rhpman {
 std::pair<SimulationParameters, bool> SimulationParameters::parse(int argc, char* argv[]) {
   /* Default simulation values. */
   // Simulation run time.
-  double optRuntime = 5.0_minutes;
+  double optRuntime = 2.0_minutes;
 
   // Simulation seed.
   uint32_t optSeed = 1;
@@ -66,7 +66,7 @@ std::pair<SimulationParameters, bool> SimulationParameters::parse(int argc, char
 
   // Link and network parameters.
   std::string optRoutingProtocol = "dsdv";
-  double optWifiRadius = 100.0_meters;
+  double optWifiRadius = 1000.0_meters;
 
   // RHPMAN app parameters.
   double optCarryingThreshold = 0.6;

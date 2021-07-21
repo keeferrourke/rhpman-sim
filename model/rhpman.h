@@ -30,6 +30,8 @@
 // uncomment to enable the optional checking the data items in the buffer when doing a lookup
 #define __RHPMAN_OPTIONAL_CHECK_BUFFER
 
+#define APPLICATION_PORT 5000
+
 #include <map>
 #include <set>  // std::set
 
@@ -79,9 +81,9 @@ class RhpmanApp : public Application {
         m_electionNeighborhoodHops(4),
         m_profileDelay(),
         m_degreeConnectivity(),
-        m_socket(0){};
+        m_socket_recv(0),
+        m_socket_send(0){};
 
-  Ptr<Socket> GetSocket() const;
   Role GetRole() const;
   State GetState() const;
 
@@ -101,8 +103,6 @@ class RhpmanApp : public Application {
   void ExchangeProfiles();
 
   // Member fields.
-  uint16_t m_port;  //!< Remote peer port
-
   State m_state;
   Role m_role;
   double m_forwardingThreshold;
@@ -113,7 +113,8 @@ class RhpmanApp : public Application {
   uint32_t m_electionNeighborhoodHops;
   Time m_profileDelay;
   std::map<Time, uint32_t> m_degreeConnectivity;
-  Ptr<Socket> m_socket;
+  Ptr<Socket> m_socket_recv;
+  Ptr<Socket> m_socket_send;
 
   // timeouts
   Time m_request_timeout;
@@ -137,6 +138,7 @@ class RhpmanApp : public Application {
   EventId m_election_watchdog_event;
 
   // event triggers
+  void SendMessage(Address dest, Ptr<Packet> packet);
   void SendProbablisticData(DataItem* data);
   void SendStartElection();
   void SendPing();
@@ -161,10 +163,14 @@ class RhpmanApp : public Application {
   void LookupFromReplicaHolders(uint64_t dataID);
   void SendToReplicaHolders(DataItem* data);
   uint32_t GetID();
-  static uint64_t GenerateRequestID();
+  static uint64_t GenerateMessageID();
   void ResetFitnesses();
   std::set<uint32_t> GetRecipientAddresses(double sigma);
   void TransferBuffer(uint32_t nodeID);
+  DataItem* CheckLocalStorage(uint64_t dataID);
+
+  Ptr<Socket> SetupSocket(uint16_t port, uint32_t ttl);
+  void DestroySocket(Ptr<Socket> socket);
 
   // calculation helpers
   double CalculateElectionFitness();

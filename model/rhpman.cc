@@ -104,6 +104,12 @@ TypeId RhpmanApp::GetTypeId() {
               MakeTimeAccessor(&RhpmanApp::m_profileDelay),
               MakeTimeChecker(0.1_sec))
           .AddAttribute(
+              "PingCooldown",
+              "Time to wait between sending ping messages (T)",
+              TimeValue(5.0_sec),
+              MakeTimeAccessor(&RhpmanApp::m_ping_cooldown),
+              MakeTimeChecker(0.1_sec))
+          .AddAttribute(
               "lookup_success_cb",
               "a callback to be called when a data item is successfully found",
               CallbackValue(),
@@ -117,8 +123,6 @@ TypeId RhpmanApp::GetTypeId() {
               MakeCallbackChecker());
   return id;
 }
-
-Ptr<Socket> RhpmanApp::GetSocket() const { return m_socket; }
 
 RhpmanApp::Role RhpmanApp::GetRole() const { return m_role; }
 
@@ -143,23 +147,51 @@ void RhpmanApp::StartApplication() {
   // - One socket for actual data transmission (some packet with unique data)
   //
 
-  if (m_socket == 0) {
-    m_socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
-    InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), m_port);
+  if (m_socket_recv == 0) {
+    m_socket_recv = SetupSocket(APPLICATION_PORT, 0);
+  }
 
-    if (m_socket->Bind(local) == -1) {
-      NS_FATAL_ERROR("Failed to bind socket");
-    }
+  if (m_socket_send == 0) {
+    m_socket_send = SetupSocket(APPLICATION_PORT,  m_neighborhoodHops);
   }
 
   m_storage.Init(m_storageSpace);
   m_buffer.Init(m_bufferSpace);
 
-  m_socket_recv->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
-
   // TODO: Schedule events.
   m_state = State::RUNNING;
+
+  SchedulePing();
+
 }
+
+Ptr<Socket> RhpmanApp::SetupSocket(uint16_t port, uint32_t ttl) {
+
+  Ptr<Socket> socket;
+
+  socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
+
+  if (ttl == 0) {
+    InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), port);
+    if (socket->Bind(local) == -1) {
+      NS_FATAL_ERROR("Failed to bind socket");
+    }
+  } else {
+    //socket->Connect(InetSocketAddress(Ipv4Address::GetBroadcast(), port));
+    socket->SetAllowBroadcast(true);
+    socket->SetIpTtl(ttl);
+  }
+
+  socket->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
+
+  return socket;
+}
+
+void RhpmanApp::DestroySocket(Ptr<Socket> socket) {
+  socket->Close();
+  socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
+}
+
 
 // override
 void RhpmanApp::StopApplication() {
@@ -171,10 +203,14 @@ void RhpmanApp::StopApplication() {
     NS_LOG_DEBUG("Ignoring RhpmanApp::StopApplication on already stopped instance");
   }
 
-  if (m_socket != 0) {
-    m_socket->Close();
-    m_socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
-    m_socket = 0;
+  if (m_socket_recv != 0) {
+    DestroySocket(m_socket_recv);
+    m_socket_recv = 0;
+  }
+
+  if (m_socket_send != 0) {
+    DestroySocket(m_socket_send);
+    m_socket_send = 0;
   }
 
   // TODO: Cancel events.
@@ -185,24 +221,13 @@ void RhpmanApp::StopApplication() {
 // this is public and is how any data lookup is made
 void RhpmanApp::Lookup(uint64_t id) {
   // check cache
-  DataItem* item = m_storage.GetItem(id);
+  DataItem* item = CheckLocalStorage(id);
   if (item != NULL) {
     if (!m_success.IsNull()) m_success(item);
     return;
   }
 
-#if defined(__RHPMAN_OPTIONAL_CHECK_BUFFER)
-
-  // check the data items in the buffer
-  item = m_buffer.GetItem(id);
-  if (item != NULL) {
-    if (!m_success.IsNull()) m_success(item);
-    return;
-  }
-
-#endif  // __RHPMAN_OPTIONAL_CHECK_BUFFER
-
-  // ask peers
+  // ask replica holder nodes
   if (m_replicating_nodes.size() != 0) {
     LookupFromReplicaHolders(id);
     return;
@@ -224,6 +249,28 @@ bool RhpmanApp::Save(DataItem* data) {
 //  send messages
 // ================================================
 
+
+static Ptr<Packet> GeneratePacket(rhpman::packets::Message message) {
+  uint32_t size = message.ByteSizeLong();
+    uint8_t* payload = new uint8_t[size];
+
+    if (!message.SerializeToArray(payload, size)) {
+      NS_LOG_ERROR("Failed to serialize the message for transmission");
+    }
+
+    Ptr<Packet> packet = Create<Packet>(payload, size);
+    delete[] payload;
+
+    return packet;
+}
+
+void RhpmanApp::SendMessage(Address dest, Ptr<Packet> packet) {
+
+  //std::cout << "node: " << GetID() << " - " << Simulator::Now().GetSeconds() << "s\n";
+ // std::cout << "sending " << packet->GetSize() << " bytes\n";
+  m_socket_send->SendTo(packet, 0, dest);
+}
+
 void RhpmanApp::SendProbablisticData(DataItem* data) {
   // check all nodes profiles
   std::set<uint32_t> addresses = GetRecipientAddresses(m_forwardingThreshold);
@@ -239,7 +286,15 @@ void RhpmanApp::SendPing() {
   // check if replicating node
   // send UDP ping to h or h_r hops
 
-  // double profile = CalculateProfile();
+  rhpman::packets::Message message;
+  message.set_id(GenerateMessageID());
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  rhpman::packets::Ping* ping = message.mutable_ping();
+ // ping.setReplicating_node(m_role == Role::REPLICATING);
+  ping->set_delivery_probability(CalculateProfile());
+
+  SendMessage(Ipv4Address::GetBroadcast(), GeneratePacket(message));
 }
 
 // broadcast fitness value to all nodes in h_r hops
@@ -339,6 +394,8 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
   Ptr<Packet> packet;
   Address from;
   Address localAddress;
+      std::cout << "handle\n";
+
 
   while ((packet = socket->RecvFrom(from))) {
     socket->GetSockName(localAddress);
@@ -347,14 +404,12 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
                    << " bytes from " << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                    << InetSocketAddress::ConvertFrom(from).GetPort());
 
-    m_rxTrace(packet);
-    m_rxTraceWithAddresses(packet, from, localAddress);
-
     uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
     uint32_t size = packet->GetSize();
     uint8_t* payload = new uint8_t[size];
     packet->CopyData(payload, size);
 
+    std::cout << "received message from: " << srcAddress << "\n";
     // parse bytes into protobuf object
 
     // switch based on message type
@@ -414,17 +469,7 @@ void RhpmanApp::HandleElectionFitness(uint32_t nodeID, double fitness) {
 }
 
 void RhpmanApp::HandleSyncLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID) {
-  DataItem* res = m_storage.GetItem(dataID);
-
-#if defined(__RHPMAN_OPTIONAL_CHECK_BUFFER)
-
-  // check buffer for in transit messages
-  // not mentioned in the origianal paper
-  if (res == NULL) {
-    res = m_buffer.GetItem(dataID);
-  }
-
-#endif  // __RHPMAN_OPTIONAL_CHECK_BUFFER
+  DataItem* res = CheckLocalStorage(dataID);
 
   if (res != NULL) {
     return SendSyncResponse(requestID, nodeID, res);
@@ -447,7 +492,7 @@ void RhpmanApp::HandleStore(DataItem* data) {
 
 void RhpmanApp::HandleProbabalisticStore(uint32_t nodeID, DataItem* data) {
   // check to see if the node already has the data item in the buffer
-  if (m_storage.HasItem(data->getID()) || m_buffer.HasItem(data->getID())) return;
+  if (CheckLocalStorage(data->getID()) != NULL) return;
 
   // if it is a replicating node store the data item
   if (m_role == Role::REPLICATING) {
@@ -492,7 +537,7 @@ void RhpmanApp::MakeNonReplicaHolderNode() {
 // this will send the synchonous data lookup requests to all of the known replica holder nodes
 void RhpmanApp::LookupFromReplicaHolders(uint64_t dataID) {
   // create lookup message (use the same ID for each message sent)
-  uint64_t requestID = RhpmanApp::GenerateRequestID();
+  uint64_t requestID = RhpmanApp::GenerateMessageID();
 
   for (std::set<uint32_t>::iterator it = m_replicating_nodes.begin();
        it != m_replicating_nodes.end();
@@ -530,7 +575,7 @@ uint32_t RhpmanApp::GetID() {
 
 // this will generate the ID value to use for the requests this is a static function that should be
 // called to generate all the ids to ensure they are unique
-uint64_t RhpmanApp::GenerateRequestID() {
+uint64_t RhpmanApp::GenerateMessageID() {
   static uint64_t id = 0;
   return ++id;
 }
@@ -663,5 +708,24 @@ void RhpmanApp::ReplicationNodeTimeout(uint32_t nodeID) { m_replicating_nodes.er
 
 // this is a helper and will return the number of data items that can be stored in local storage
 uint32_t RhpmanApp::GetFreeSpace() { return m_storage.GetFreeSpace(); }
+
+
+DataItem* RhpmanApp::CheckLocalStorage(uint64_t dataID) {
+
+    // check cache
+  DataItem* item = m_storage.GetItem(dataID);
+  if (item != NULL)  return item;
+
+#if defined(__RHPMAN_OPTIONAL_CHECK_BUFFER)
+
+  // check the data items in the buffer
+  item = m_buffer.GetItem(dataID);
+  if (item != NULL)  return item;
+
+#endif  // __RHPMAN_OPTIONAL_CHECK_BUFFER
+
+ return NULL;
+}
+
 
 }  // namespace rhpman

@@ -4,31 +4,61 @@ package rhpman.packets;
 
 message Message {
     uint64 id = 1;              // DO NOT SET THIS TO 0
-    uint64 response_to = 2;      // this is only set if this is a response message, default 0
-
-    uint64 original_sent_at = 3; // this is the timestamp from the request, only set in the reponse
-    uint64 timestamp = 4;
+    uint64 timestamp = 2;
 
     oneof payload {
-        PingPong ping = 5;
+        RelicaAnouncement anounce = 4;
+        Ping ping = 5;
         Request request = 6;
         Response response = 7;
+        ElectionRequest election = 8;
+        ElectionFitness fitness = 9;
+        ModeChange modeChange = 10;
+        Store store = 11;
     }
 }
 
-message PingPong {
-    uint64 nodeID = 1;
-    bool replicating_node = 2;
+message ElectionRequest {
 }
 
+message RelicaAnouncement {
+}
+
+message ElectionFitness {
+    double fitness = 1;
+}
+
+message ModeChange {
+    uint32 old_replication_node = 1;
+    uint32 new_replication_node = 2;
+}
+
+message Ping {
+    double delivery_probability = 1;
+}
 
 message Request {
-    uint64 data_id = 1;
-    bool replication_request = 2;
+    uint64 id = 1;
+    uint64 data_id = 2;
+    uint32 requestor = 3;
+    double sigma = 4;
 }
 
 message Response {
-    uint64 data_id = 1;
-    bool replication_request = 2;
+    uint64 id = 1;
+    uint64 data_id = 2;
+    uint32 requestor = 3;
+    DataItem data = 4;
+}
+
+message Store {
+    uint64 id = 1;
+    uint64 data_id = 2;
+    DataItem data = 4;
+}
+
+message DataItem {
+    uint64 id = 1;
+    uint32 creator = 2;
     bytes data = 3;
 }
