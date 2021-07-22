@@ -133,7 +133,6 @@ class RhpmanApp : public Application {
   Time m_profile_timeout;
   Time m_election_timeout;
   Time m_election_cooldown;
-  Time m_ping_cooldown;
   Time m_min_election_time;  // this is the earliest time that another election is allowed to be
                              // requested by a node
 

@@ -106,10 +106,43 @@ TypeId RhpmanApp::GetTypeId() {
               MakeTimeAccessor(&RhpmanApp::m_profileDelay),
               MakeTimeChecker(0.1_sec))
           .AddAttribute(
-              "PingCooldown",
-              "Time to wait between sending ping messages (T)",
+              "RequestTimeout",
+              "Time to wait after a lookup is made before it is marked as unsuccessful (T)",
               TimeValue(5.0_sec),
-              MakeTimeAccessor(&RhpmanApp::m_ping_cooldown),
+              MakeTimeAccessor(&RhpmanApp::m_request_timeout),
+              MakeTimeChecker(0.1_sec))
+          .AddAttribute(
+              "ElectionWatchdogTimeout",
+              "Time to wait between the last update from a replica holder node and triggering an "
+              "election (T)",
+              TimeValue(5.0_sec),
+              MakeTimeAccessor(&RhpmanApp::m_election_watchdog_timeout),
+              MakeTimeChecker(0.1_sec))
+          .AddAttribute(
+              "ReplicationNodeTimeout",
+              "Time to wait between last hearing from a replication node and removing them from "
+              "the list of nodes (T)",
+              TimeValue(5.0_sec),
+              MakeTimeAccessor(&RhpmanApp::m_missing_replication_timeout),
+              MakeTimeChecker(0.1_sec))
+          .AddAttribute(
+              "ProfileTimeout",
+              "Time to wait between last hearing from a node and removing them from the list of "
+              "neighbors (T)",
+              TimeValue(5.0_sec),
+              MakeTimeAccessor(&RhpmanApp::m_profile_timeout),
+              MakeTimeChecker(0.1_sec))
+          .AddAttribute(
+              "ElectionTimeout",
+              "Time to wait between before checking the results of an election (T)",
+              TimeValue(5.0_sec),
+              MakeTimeAccessor(&RhpmanApp::m_election_timeout),
+              MakeTimeChecker(0.1_sec))
+          .AddAttribute(
+              "ElectionCooldown",
+              "Time to wait before an election can be started again (T)",
+              TimeValue(1.0_sec),
+              MakeTimeAccessor(&RhpmanApp::m_election_cooldown),
               MakeTimeChecker(0.1_sec))
           .AddAttribute(
               "lookup_success_cb",
@@ -134,12 +167,6 @@ void RhpmanApp::StartApplication() {
   }
   NS_LOG_DEBUG("Starting RhpmanApp");
   m_state = State::NOT_STARTED;
-
-  // TODO: I think I need multiple sockets? Maybe not though.
-  // - One socket for replication election; broadcast special packet (TODO) to
-  //   determine roles present in election neighborhood
-  // - One socket for actual data transmission (some packet with unique data)
-  //
 
   if (m_socket_recv == 0) {
     m_socket_recv = SetupSocket(APPLICATION_PORT, 0);
@@ -400,9 +427,6 @@ void RhpmanApp::BroadcastToElection(Ptr<Packet> packet) { m_election_socket->Sen
 
 // this does not have a TTL restriction, use this for targetted messages
 void RhpmanApp::SendMessage(Ipv4Address dest, Ptr<Packet> packet) {
-  // TODO: remove this assert once the refactor is done
-  assert(dest != Ipv4Address::GetBroadcast());
-
   m_socket_recv->SendTo(packet, 0, InetSocketAddress(dest, APPLICATION_PORT));
 }
 
@@ -463,7 +487,7 @@ void RhpmanApp::SchedulePing() {
   SendPing();
 
   // schedule sending ping broadcast
-  Simulator::Schedule(m_ping_cooldown, &RhpmanApp::SchedulePing, this);
+  Simulator::Schedule(m_profileDelay, &RhpmanApp::SchedulePing, this);
 }
 
 void RhpmanApp::ScheduleReplicaHolderAnnouncement() {
@@ -473,7 +497,7 @@ void RhpmanApp::ScheduleReplicaHolderAnnouncement() {
 
   // schedule sending replica holder announcement
   m_replica_announcement_event =
-      Simulator::Schedule(m_ping_cooldown, &RhpmanApp::ScheduleReplicaHolderAnnouncement, this);
+      Simulator::Schedule(m_profileDelay, &RhpmanApp::ScheduleReplicaHolderAnnouncement, this);
 }
 
 void RhpmanApp::ScheduleElectionCheck() {
