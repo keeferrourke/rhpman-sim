@@ -42,6 +42,7 @@ namespace rhpman {
 using namespace ns3;
 
 static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message);
+static rhpman::packets::Message ParsePacket(const Ptr<Packet> packet);
 
 NS_OBJECT_ENSURE_REGISTERED(RhpmanApp);
 
@@ -416,6 +417,23 @@ Ptr<Packet> RhpmanApp::GenerateModeChange(uint32_t newNode) {
   return GeneratePacket(message);
 }
 
+Ptr<Packet> RhpmanApp::GenerateTransfer(const std::vector<DataItem*> items) {
+  rhpman::packets::Message message;
+  message.set_id(GenerateMessageID());
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  rhpman::packets::Transfer* transfer = message.mutable_transfer();
+
+  for (std::vector<DataItem*>::iterator it = items.begin(); it != items.end(); ++it) {
+    rhpman::packets::DataItem* item = transfer->add_items();
+
+    item->set_data_id((*it)->getID());
+    item->set_data((*it)->getPayload(), (*it)->getSize());
+  }
+
+  return GeneratePacket(message);
+}
+
 static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message) {
   uint32_t size = message.ByteSizeLong();
   uint8_t* payload = new uint8_t[size];
@@ -428,6 +446,18 @@ static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message) {
   delete[] payload;
 
   return packet;
+}
+
+static rhpman::packets::Message ParsePacket(const Ptr<Packet> packet) {
+  uint32_t size = packet->GetSize();
+  uint8_t* payload = new uint8_t[size];
+  packet->CopyData(payload, size);
+
+  rhpman::packets::Message message;
+  bool status = message.ParseFromArray(payload, size);
+  delete[] payload;
+
+  return status ? message : NULL;
 }
 
 // ================================================
@@ -485,10 +515,6 @@ void RhpmanApp::SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dat
 }
 
 void RhpmanApp::SendSyncResponse(uint64_t requestID, uint32_t nodeID, DataItem* data) {
-  // send direct message to peer
-}
-
-void RhpmanApp::SendSyncStore(uint32_t nodeID, DataItem* data) {
   // send direct message to peer
 }
 
@@ -579,20 +605,40 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
                    << InetSocketAddress::ConvertFrom(from).GetPort());
 
     uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
-    uint32_t size = packet->GetSize();
-    uint8_t* payload = new uint8_t[size];
-    packet->CopyData(payload, size);
+    rhpman::packets::Message message = ParsePacket(packet);
 
-    std::cout << "received message from: " << srcAddress << "\n";
-    // parse bytes into protobuf object
+    if (message == NULL) {
+      NS_LOG_ERROR("Failed to parse the packet, cant proccess it");
+      return;
+    }
 
     // switch based on message type
 
-    // do handling here
+    if (message.has_announce()) {
+      HandleReplicationAnnouncement(srcAddress);
+    } else if (message.has_ping()) {
+      HandlePing(srcAddress, message.ping().delivery_probability());
+    } else if (message.has_mode_change()) {
+      HandleModeChange(
+          message.mode_change().old_replication_node(),
+          message.mode_change().new_replication_node());
+    } else if (message.has_election()) {
+      HandleElectionRequest();
+    } else if (message.has_fitness()) {
+      HandleElectionFitness(srcAddress, message.fitness().fitness());
+    } else if (message.has_store()) {
+      // TODO: implement storage handler
+    } else if (message.has_request()) {
+      // TODO: implement lookup handler
+    } else if (message.has_response()) {
+      // TODO: handle lookup response
+    } else {
+      NS_LOG_WARN("unknown message type");
+    }
   }
 }
 
-void RhpmanApp::HandlePing(uint32_t nodeID, double profile, bool isReplication) {
+void RhpmanApp::HandlePing(uint32_t nodeID, double profile) {
   m_peerProfiles[nodeID] = profile;
   ScheduleProfileTimeout(nodeID);
 
@@ -777,13 +823,10 @@ std::set<uint32_t> RhpmanApp::FilterAddress(const std::set<uint32_t> addresses, 
 
 // call this to send the all of the contents of the buffer to a new node
 void RhpmanApp::TransferBuffer(uint32_t nodeID) {
-  std::vector<DataItem*> items = m_buffer.GetAll();
+  Ptr<Packet> message = GenerateTransfer(m_buffer.GetAll());
+  SendMessage(Ipv4Address(nodeID), message);
 
-  for (std::vector<DataItem*>::iterator it = items.begin(); it != items.end(); ++it) {
-    SendSyncStore(nodeID, *it);
-  }
-
-  // remove items from the buffer once they have been transfered so they cant be forwarded again
+  // remove items from the buffer once they have been transferer so they cant be forwarded again
   m_buffer.ClearStorage();
 }
 

@@ -204,7 +204,7 @@ class RhpmanApp : public Application {
 
   // message handlers
   void HandleRequest(Ptr<Socket> socket);
-  void HandlePing(uint32_t nodeID, double profile, bool isReplication);
+  void HandlePing(uint32_t nodeID, double profile);
   void HandleModeChange(uint32_t oldNode, uint32_t newNode);
   void HandleElectionRequest();
   void HandleElectionFitness(uint32_t nodeID, double fitness);
@@ -219,6 +219,7 @@ class RhpmanApp : public Application {
   Ptr<Packet> GenerateReplicaAnnouncement();
   Ptr<Packet> GenerateElectionRequest();
   Ptr<Packet> GenerateModeChange(uint32_t newNode);
+  Ptr<Packet> GenerateTransfer(const std::vector<DataItem*> items);
 
   // data storage for the node
   uint32_t m_storageSpace;

@@ -15,6 +15,7 @@ message Message {
         ElectionFitness fitness = 9;
         ModeChange mode_change = 10;
         Store store = 11;
+        Transfer transfer = 12;
     }
 }
 
@@ -55,6 +56,10 @@ message Store {
     //uint64 id = 1;
     uint64 data_id = 2;
     DataItem data = 4;
+}
+
+message Transfer {
+    repeated DataItem items = 1;
 }
 
 message DataItem {
