@@ -127,7 +127,6 @@ class RhpmanApp : public Application {
 
   // timeouts
   Time m_request_timeout;
-  Time m_election_watchdog_timeout;    // this is the timeout used
   Time m_missing_replication_timeout;  // if a replication node does not checkin before this time it
                                        // is removed from the list
   Time m_profile_timeout;
@@ -138,10 +137,11 @@ class RhpmanApp : public Application {
 
   // event handlers
   void LookupTimeout(uint64_t requestID);
-  void ElectionWatchDog();
+  void TriggerElection();
   void CheckElectionResults();
   void ProfileTimeout(uint32_t nodeID);
   void ReplicationNodeTimeout(uint32_t nodeID);
+  void HandleReplicationAnnouncement(uint32_t nodeID);
 
   EventId m_election_watchdog_event;
   EventId m_replica_announcement_event;
@@ -190,6 +190,7 @@ class RhpmanApp : public Application {
   Ptr<Socket> SetupSendSocket(uint16_t port, uint8_t ttl);
   RhpmanApp::Role GetNewRole();
   void ChangeRole(Role newRole);
+  void CancelEventMap(std::map<uint32_t, EventId> events);
 
   void DestroySocket(Ptr<Socket> socket);
 

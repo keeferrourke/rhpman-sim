@@ -112,13 +112,6 @@ TypeId RhpmanApp::GetTypeId() {
               MakeTimeAccessor(&RhpmanApp::m_request_timeout),
               MakeTimeChecker(0.1_sec))
           .AddAttribute(
-              "ElectionWatchdogTimeout",
-              "Time to wait between the last update from a replica holder node and triggering an "
-              "election (T)",
-              TimeValue(5.0_sec),
-              MakeTimeAccessor(&RhpmanApp::m_election_watchdog_timeout),
-              MakeTimeChecker(0.1_sec))
-          .AddAttribute(
               "ReplicationNodeTimeout",
               "Time to wait between last hearing from a replication node and removing them from "
               "the list of nodes (T)",
@@ -185,10 +178,14 @@ void RhpmanApp::StartApplication() {
 
   m_address = GetID();
 
-  // TODO: Schedule events.
   m_state = State::RUNNING;
 
+  // TODO: Schedule events.
   SchedulePing();
+  ScheduleElectionWatchdog();
+
+  // start inital replica node election
+  RunElection();
 }
 
 // override
@@ -216,9 +213,13 @@ void RhpmanApp::StopApplication() {
     m_election_socket = 0;
   }
 
-  // TODO: Cancel events.
-
   m_state = State::STOPPED;
+
+  // TODO: Cancel events.
+  m_election_watchdog_event.Cancel();
+  m_replica_announcement_event.Cancel();
+  CancelEventMap(m_profileTimeouts);
+  CancelEventMap(m_replicationNodeTimeouts);
 }
 
 // ================================================
@@ -511,7 +512,7 @@ void RhpmanApp::ScheduleElectionWatchdog() {
   if (m_state != State::RUNNING) return;
 
   m_election_watchdog_event =
-      Simulator::Schedule(m_election_watchdog_timeout, &RhpmanApp::ElectionWatchDog, this);
+      Simulator::Schedule(m_missing_replication_timeout, &RhpmanApp::TriggerElection, this);
 }
 
 void RhpmanApp::ScheduleLookupTimeout(uint64_t requestID, uint64_t dataID) {
@@ -590,12 +591,13 @@ void RhpmanApp::HandlePing(uint32_t nodeID, double profile, bool isReplication) 
   }
 
 #endif  // __RHPMAN_OPTIONAL_CARRIER_FORWARDING
+}
 
-  // reset the watchdog timer
-  if (isReplication) {
-    m_election_watchdog_event.Cancel();
-    ScheduleElectionWatchdog();
-  }
+void RhpmanApp::HandleReplicationAnnouncement(uint32_t nodeID) {
+  m_election_watchdog_event.Cancel();
+
+  m_replicating_nodes.insert(nodeID);
+  ScheduleReplicaNodeTimeout(nodeID);
 }
 
 // this will handle updating the nodes in the replication node list
@@ -848,7 +850,7 @@ void RhpmanApp::LookupTimeout(uint64_t requestID) {
 // this event must be canceled / restarted whenever a 'ping' is received from one of the replicating
 // nodes do not schedule this if current node is a replicating node if this triggers then start an
 // election
-void RhpmanApp::ElectionWatchDog() {
+void RhpmanApp::TriggerElection() {
   // check if currently running an election
   if (Simulator::Now() < m_min_election_time) {
     NS_LOG_DEBUG("too early to run another election");
@@ -859,6 +861,12 @@ void RhpmanApp::ElectionWatchDog() {
 
   SendStartElection();
   RunElection();
+}
+
+void RhpmanApp::CancelEventMap(std::map<uint32_t, EventId> events) {
+  for (std::map<uint32_t, EventId>::iterator it = events.begin(); it != events.end(); ++it) {
+    it->second.Cancel();
+  }
 }
 
 // this will be triggered after an election delay to check to see if the current node should become
@@ -882,7 +890,13 @@ RhpmanApp::Role RhpmanApp::GetNewRole() {
 void RhpmanApp::ProfileTimeout(uint32_t nodeID) { m_peerProfiles.erase(nodeID); }
 
 // this will remove the replication node from the list if missed its checkins
-void RhpmanApp::ReplicationNodeTimeout(uint32_t nodeID) { m_replicating_nodes.erase(nodeID); }
+void RhpmanApp::ReplicationNodeTimeout(uint32_t nodeID) {
+  m_replicating_nodes.erase(nodeID);
+
+  if (m_replicating_nodes.size() == 0) {
+    TriggerElection();
+  }
+}
 
 // ================================================
 // storage functions
