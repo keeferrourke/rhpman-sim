@@ -243,12 +243,11 @@ void RhpmanApp::Lookup(uint64_t id) {
 
   // run semi probabilistic lookup
   double sigma = CalculateProfile();
-  std::set<uint32_t> addresses = GetRecipientAddresses(sigma);
-
   uint64_t requestID = GenerateMessageID();
-  Ptr<Packet> message = GenerateLookup(requestID, id, sigma);
-  SendToNodes(message, addresses);
 
+  Ptr<Packet> message = GenerateLookup(requestID, id, sigma);
+
+  SemiProbabilisticSend(message, 0, sigma);
   ScheduleLookupTimeout(requestID, id);
 }
 
@@ -273,6 +272,21 @@ RhpmanApp::State RhpmanApp::GetState() const { return m_state; }
 // ================================================
 //  setup helpers
 // ================================================
+
+// this will get the nodes IPv4 address and return it as a 32 bit integer
+uint32_t RhpmanApp::GetID() {
+  Ptr<Ipv4> ipv4 = GetNode()->GetObject<Ipv4>();
+  Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1, 0);
+  Ipv4Address ipAddr = iaddr.GetLocal();
+
+  uint32_t addr = ipAddr.Get();
+
+  // This next line will print the ipv4 address in a.b.c.d format
+  // std::cout << "addr: " << ((addr >> 24) & 0x00ff) << "." << ((addr >> 16) & 0x00ff) << "." <<
+  // ((addr >> 8) & 0x00ff) << "." << ((addr) & 0x00ff) << "\n";
+
+  return addr;
+}
 
 Ptr<Socket> RhpmanApp::SetupRcvSocket(uint16_t port) {
   Ptr<Socket> socket;
@@ -715,31 +729,6 @@ void RhpmanApp::LookupFromReplicaHolders(uint64_t dataID) {
   Ptr<Packet> message = GenerateLookup(requestID, dataID, m_forwardingThreshold);
   SendToNodes(message, m_replicating_nodes);
   ScheduleLookupTimeout(requestID, dataID);
-}
-
-// this will be called after the node stores a new data item
-// this will send it synchronously
-void RhpmanApp::SendToReplicaHolders(DataItem* data) {
-  for (std::set<uint32_t>::iterator it = m_replicating_nodes.begin();
-       it != m_replicating_nodes.end();
-       ++it) {
-    SendSyncStore(*it, data);
-  }
-}
-
-// this will get the nodes IPv4 address and return it as a 32 bit integer
-uint32_t RhpmanApp::GetID() {
-  Ptr<Ipv4> ipv4 = GetNode()->GetObject<Ipv4>();
-  Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1, 0);
-  Ipv4Address ipAddr = iaddr.GetLocal();
-
-  uint32_t addr = ipAddr.Get();
-
-  // This next line will print the ipv4 address in a.b.c.d format
-  // std::cout << "addr: " << ((addr >> 24) & 0x00ff) << "." << ((addr >> 16) & 0x00ff) << "." <<
-  // ((addr >> 8) & 0x00ff) << "." << ((addr) & 0x00ff) << "\n";
-
-  return addr;
 }
 
 // this will generate the ID value to use for the requests this is a static function that should be

@@ -173,7 +173,6 @@ class RhpmanApp : public Application {
   void MakeReplicaHolderNode();
   void MakeNonReplicaHolderNode();
   void LookupFromReplicaHolders(uint64_t dataID);
-  void SendToReplicaHolders(DataItem* data);
   uint32_t GetID();
   static uint64_t GenerateMessageID();
   void ResetFitnesses();
