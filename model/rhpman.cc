@@ -126,10 +126,6 @@ TypeId RhpmanApp::GetTypeId() {
   return id;
 }
 
-RhpmanApp::Role RhpmanApp::GetRole() const { return m_role; }
-
-RhpmanApp::State RhpmanApp::GetState() const { return m_state; }
-
 // override
 void RhpmanApp::StartApplication() {
   if (m_state == State::RUNNING) {
@@ -198,39 +194,9 @@ void RhpmanApp::StopApplication() {
   m_state = State::STOPPED;
 }
 
-Ptr<Socket> RhpmanApp::SetupRcvSocket(uint16_t port) {
-  Ptr<Socket> socket;
-  socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
-
-  InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), port);
-  if (socket->Bind(local) == -1) {
-    NS_FATAL_ERROR("Failed to bind socket");
-  }
-
-  socket->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
-  return socket;
-}
-
-Ptr<Socket> RhpmanApp::SetupSendSocket(uint16_t port, uint8_t ttl) {
-  Ptr<Socket> socket;
-  socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
-
-  socket->Connect(InetSocketAddress(Ipv4Address::GetBroadcast(), port));
-  socket->SetAllowBroadcast(true);
-  socket->SetIpTtl(ttl);
-
-  socket->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
-  return socket;
-}
-
-Ptr<Socket> RhpmanApp::SetupSocket(uint16_t port, uint32_t ttl) {
-  return ttl == 0 ? SetupRcvSocket(port) : SetupSendSocket(port, ttl);
-}
-
-void RhpmanApp::DestroySocket(Ptr<Socket> socket) {
-  socket->Close();
-  socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
-}
+// ================================================
+//  Public interface to the storage application
+// ================================================
 
 // this is public and is how any data lookup is made
 void RhpmanApp::Lookup(uint64_t id) {
@@ -268,6 +234,55 @@ bool RhpmanApp::Save(DataItem* data) {
 
   return status;
 }
+
+// this is a helper and will return the number of data items that can be stored in local storage
+uint32_t RhpmanApp::GetFreeSpace() { return m_storage.GetFreeSpace(); }
+
+RhpmanApp::Role RhpmanApp::GetRole() const { return m_role; }
+
+RhpmanApp::State RhpmanApp::GetState() const { return m_state; }
+
+// ================================================
+//  setup helpers
+// ================================================
+
+Ptr<Socket> RhpmanApp::SetupRcvSocket(uint16_t port) {
+  Ptr<Socket> socket;
+  socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
+
+  InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), port);
+  if (socket->Bind(local) == -1) {
+    NS_FATAL_ERROR("Failed to bind socket");
+  }
+
+  socket->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
+  return socket;
+}
+
+Ptr<Socket> RhpmanApp::SetupSendSocket(uint16_t port, uint8_t ttl) {
+  Ptr<Socket> socket;
+  socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
+
+  socket->Connect(InetSocketAddress(Ipv4Address::GetBroadcast(), port));
+  socket->SetAllowBroadcast(true);
+  socket->SetIpTtl(ttl);
+
+  socket->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
+  return socket;
+}
+
+Ptr<Socket> RhpmanApp::SetupSocket(uint16_t port, uint32_t ttl) {
+  return ttl == 0 ? SetupRcvSocket(port) : SetupSendSocket(port, ttl);
+}
+
+void RhpmanApp::DestroySocket(Ptr<Socket> socket) {
+  socket->Close();
+  socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
+}
+
+// ================================================
+//  send wrappers
+// ================================================
 
 void RhpmanApp::SemiProbabilisticSend(Ptr<Packet> message, uint32_t srcAddr, double sigma) {
   SendToNodes(message, m_replicating_nodes);
@@ -337,6 +352,28 @@ Ptr<Packet> RhpmanApp::GenerateReplicaAnnouncement() {
   return GeneratePacket(message);
 }
 
+Ptr<Packet> RhpmanApp::GenerateElectionRequest() {
+  rhpman::packets::Message message;
+  message.set_id(GenerateMessageID());
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  message.mutable_election();
+  return GeneratePacket(message);
+}
+
+Ptr<Packet> RhpmanApp::GenerateModeChange(uint32_t newNode) {
+  rhpman::packets::Message message;
+  message.set_id(GenerateMessageID());
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  rhpman::packets::ModeChange* mode = message.mutable_mode_change();
+
+  mode->set_old_replication_node(m_address);
+  mode->set_new_replication_node(newNode);
+
+  return GeneratePacket(message);
+}
+
 static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message) {
   uint32_t size = message.ByteSizeLong();
   uint8_t* payload = new uint8_t[size];
@@ -352,7 +389,7 @@ static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message) {
 }
 
 // ================================================
-//  send messages
+//  actually send messages
 // ================================================
 
 // this will send to all nodes within h hops
@@ -369,14 +406,14 @@ void RhpmanApp::SendMessage(Ipv4Address dest, Ptr<Packet> packet) {
   m_socket_recv->SendTo(packet, 0, InetSocketAddress(dest, APPLICATION_PORT));
 }
 
-void RhpmanApp::SendProbablisticData(DataItem* data) {
-  // check all nodes profiles
-  std::set<uint32_t> addresses = GetRecipientAddresses(m_forwardingThreshold);
-}
+// ================================================
+//  send messages
+// ================================================
 
 // send the broadcast to all h_r nodes to start a new election
 void RhpmanApp::SendStartElection() {
-  // just send the broadcast
+  Ptr<Packet> message = GenerateElectionRequest();
+  BroadcastToElection(message);
 }
 
 // this will send an announcement that this node is a replica holder node
@@ -386,10 +423,6 @@ void RhpmanApp::SendReplicationAnnouncement() {
 }
 
 void RhpmanApp::SendPing() {
-  // calculate profile
-  // check if replicating node
-  // send UDP ping to h or h_r hops
-
   Ptr<Packet> message = GeneratePing(CalculateProfile());
   BroadcastToNeighbors(message);
 }
@@ -404,7 +437,8 @@ void RhpmanApp::SendFitness() {
 // if the node is stepping up then this should be set to the current ip
 // if the node is stepping down this should be 0
 void RhpmanApp::SendRoleChange(uint32_t newReplicationNode) {
-  // send broadcast to h_r nodes
+  Ptr<Packet> message = GenerateModeChange(newReplicationNode);
+  BroadcastToElection(message);
 }
 
 void RhpmanApp::SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dataID) {
@@ -428,8 +462,18 @@ void RhpmanApp::SchedulePing() {
 
   SendPing();
 
-  // schedule checking election results
+  // schedule sending ping broadcast
   Simulator::Schedule(m_ping_cooldown, &RhpmanApp::SchedulePing, this);
+}
+
+void RhpmanApp::ScheduleReplicaHolderAnnouncement() {
+  if (m_state != State::RUNNING) return;
+
+  SendReplicationAnnouncement();
+
+  // schedule sending replica holder announcement
+  m_replica_announcement_event =
+      Simulator::Schedule(m_ping_cooldown, &RhpmanApp::ScheduleReplicaHolderAnnouncement, this);
 }
 
 void RhpmanApp::ScheduleElectionCheck() {
@@ -460,9 +504,7 @@ void RhpmanApp::ScheduleProfileTimeout(uint32_t nodeID) {
 
   EventId e = m_profileTimeouts[nodeID];
 
-  if (e.IsRunning()) {
-    e.Cancel();
-  }
+  e.Cancel();
 
   m_profileTimeouts[nodeID] =
       Simulator::Schedule(m_profile_timeout, &RhpmanApp::ProfileTimeout, this, nodeID);
@@ -473,9 +515,7 @@ void RhpmanApp::ScheduleReplicaNodeTimeout(uint32_t nodeID) {
 
   EventId e = m_replicationNodeTimeouts[nodeID];
 
-  if (e.IsRunning()) {
-    e.Cancel();
-  }
+  e.Cancel();
 
   m_replicationNodeTimeouts[nodeID] = Simulator::
       Schedule(m_missing_replication_timeout, &RhpmanApp::ReplicationNodeTimeout, this, nodeID);
@@ -528,7 +568,7 @@ void RhpmanApp::HandlePing(uint32_t nodeID, double profile, bool isReplication) 
 #endif  // __RHPMAN_OPTIONAL_CARRIER_FORWARDING
 
   // reset the watchdog timer
-  if (isReplication && m_election_watchdog_event.IsRunning()) {
+  if (isReplication) {
     m_election_watchdog_event.Cancel();
     ScheduleElectionWatchdog();
   }
@@ -617,16 +657,28 @@ void RhpmanApp::RunElection() {
   ScheduleElectionCheck();
 }
 
+void RhpmanApp::ChangeRole(Role newRole) {
+  if (newRole == Role::REPLICATING) {
+    MakeReplicaHolderNode();
+  } else if (m_role == Role::REPLICATING && newRole != Role::REPLICATING) {
+    MakeNonReplicaHolderNode();
+  }
+}
+
 // this helper will convert the new role to the ip address that should be sent
 void RhpmanApp::MakeReplicaHolderNode() {
   m_role = Role::REPLICATING;
   SendRoleChange(m_address);
+  ScheduleReplicaHolderAnnouncement();
 }
 
 // this helper will convert the new role to the ip address that should be sent
 void RhpmanApp::MakeNonReplicaHolderNode() {
   m_role = Role::NON_REPLICATING;
+  m_replica_announcement_event.Cancel();
   SendRoleChange(0);
+
+  // TODO: when to send the current replica data to the new replica node?
 }
 
 // this will send the synchonous data lookup requests to all of the known replica holder nodes
@@ -788,23 +840,18 @@ void RhpmanApp::ElectionWatchDog() {
 // this will be triggered after an election delay to check to see if the current node should become
 // a replication node announce to all the other nodes the results if the status is changing
 void RhpmanApp::CheckElectionResults() {
-  bool highest = true;
+  Role newRole = GetNewRole();
+  ResetFitnesses();
+  ChangeRole(newRole);
+}
+
+RhpmanApp::Role RhpmanApp::GetNewRole() {
   for (std::map<uint32_t, double>::iterator it = m_peerFitness.begin(); it != m_peerFitness.end();
        ++it) {
-    if (m_myFitness < it->second) {
-      highest = false;
-      break;
-    }
+    if (m_myFitness < it->second) return Role::NON_REPLICATING;
   }
 
-  ResetFitnesses();
-
-  Role oldRole = m_role;
-  if (highest) {
-    MakeReplicaHolderNode();
-  } else if (oldRole == Role::REPLICATING && !highest) {
-    MakeNonReplicaHolderNode();
-  }
+  return Role::REPLICATING;
 }
 
 // this will remove the nodes information from the probabilistic table
@@ -814,11 +861,8 @@ void RhpmanApp::ProfileTimeout(uint32_t nodeID) { m_peerProfiles.erase(nodeID); 
 void RhpmanApp::ReplicationNodeTimeout(uint32_t nodeID) { m_replicating_nodes.erase(nodeID); }
 
 // ================================================
-// storage array functions
+// storage functions
 // ================================================
-
-// this is a helper and will return the number of data items that can be stored in local storage
-uint32_t RhpmanApp::GetFreeSpace() { return m_storage.GetFreeSpace(); }
 
 DataItem* RhpmanApp::CheckLocalStorage(uint64_t dataID) {
   // check cache

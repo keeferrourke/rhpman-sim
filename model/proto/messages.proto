@@ -13,7 +13,7 @@ message Message {
         Response response = 7;
         ElectionRequest election = 8;
         ElectionFitness fitness = 9;
-        ModeChange modeChange = 10;
+        ModeChange mode_change = 10;
         Store store = 11;
     }
 }

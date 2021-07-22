@@ -145,12 +145,12 @@ class RhpmanApp : public Application {
   void ReplicationNodeTimeout(uint32_t nodeID);
 
   EventId m_election_watchdog_event;
+  EventId m_replica_announcement_event;
 
   // event triggers
   void BroadcastToNeighbors(Ptr<Packet> packet);
   void BroadcastToElection(Ptr<Packet> packet);
   void SendMessage(Ipv4Address dest, Ptr<Packet> packet);
-  void SendProbablisticData(DataItem* data);
   void SendStartElection();
   void SendPing();
   void SendReplicationAnnouncement();
@@ -167,6 +167,7 @@ class RhpmanApp : public Application {
   void ScheduleProfileTimeout(uint32_t nodeID);
   void ScheduleReplicaNodeTimeout(uint32_t nodeID);
   void SchedulePing();
+  void ScheduleReplicaHolderAnnouncement();
 
   // other helpers
   void RunElection();
@@ -188,6 +189,8 @@ class RhpmanApp : public Application {
   Ptr<Socket> SetupSocket(uint16_t port, uint32_t ttl);
   Ptr<Socket> SetupRcvSocket(uint16_t port);
   Ptr<Socket> SetupSendSocket(uint16_t port, uint8_t ttl);
+  RhpmanApp::Role GetNewRole();
+  void ChangeRole(Role newRole);
 
   void DestroySocket(Ptr<Socket> socket);
 
@@ -215,6 +218,8 @@ class RhpmanApp : public Application {
   Ptr<Packet> GenerateStore(const DataItem* data);
   Ptr<Packet> GeneratePing(double profile);
   Ptr<Packet> GenerateReplicaAnnouncement();
+  Ptr<Packet> GenerateElectionRequest();
+  Ptr<Packet> GenerateModeChange(uint32_t newNode);
 
   // data storage for the node
   uint32_t m_storageSpace;
