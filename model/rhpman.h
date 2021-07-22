@@ -50,7 +50,6 @@
 
 #include "dataItem.h"
 #include "storage.h"
-//#include "proto/messages.pb.h"
 
 namespace rhpman {
 
@@ -82,7 +81,8 @@ class RhpmanApp : public Application {
         m_profileDelay(),
         m_degreeConnectivity(),
         m_socket_recv(0),
-        m_socket_send(0),
+        m_neighborhood_socket(0),
+        m_election_socket(0),
         m_success(MakeNullCallback<void, DataItem*>()),
         m_failed(MakeNullCallback<void, uint64_t>()){};
 
@@ -115,8 +115,10 @@ class RhpmanApp : public Application {
   uint32_t m_electionNeighborhoodHops;
   Time m_profileDelay;
   std::map<Time, uint32_t> m_degreeConnectivity;
+
   Ptr<Socket> m_socket_recv;
-  Ptr<Socket> m_socket_send;
+  Ptr<Socket> m_neighborhood_socket;
+  Ptr<Socket> m_election_socket;
 
   // callbacks for lookup requests
   // callbacks for  requests
@@ -145,10 +147,13 @@ class RhpmanApp : public Application {
   EventId m_election_watchdog_event;
 
   // event triggers
-  void SendMessage(Address dest, Ptr<Packet> packet);
+  void BroadcastToNeighbors(Ptr<Packet> packet);
+  void BroadcastToElection(Ptr<Packet> packet);
+  void SendMessage(Ipv4Address dest, Ptr<Packet> packet);
   void SendProbablisticData(DataItem* data);
   void SendStartElection();
   void SendPing();
+  void SendReplicationAnnouncement();
   void SendFitness();
   void SendRoleChange(uint32_t newReplicationNode);
   void SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dataID);
@@ -181,6 +186,9 @@ class RhpmanApp : public Application {
   DataItem* CheckLocalStorage(uint64_t dataID);
 
   Ptr<Socket> SetupSocket(uint16_t port, uint32_t ttl);
+  Ptr<Socket> SetupRcvSocket(uint16_t port);
+  Ptr<Socket> SetupSendSocket(uint16_t port, uint8_t ttl);
+
   void DestroySocket(Ptr<Socket> socket);
 
   void SemiProbabilisticSend(Ptr<Packet> message, uint32_t srcAddr, double sigma);
@@ -205,6 +213,8 @@ class RhpmanApp : public Application {
   // message generators
   Ptr<Packet> GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma);
   Ptr<Packet> GenerateStore(const DataItem* data);
+  Ptr<Packet> GeneratePing(double profile);
+  Ptr<Packet> GenerateReplicaAnnouncement();
 
   // data storage for the node
   uint32_t m_storageSpace;

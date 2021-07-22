@@ -149,8 +149,12 @@ void RhpmanApp::StartApplication() {
     m_socket_recv = SetupSocket(APPLICATION_PORT, 0);
   }
 
-  if (m_socket_send == 0) {
-    m_socket_send = SetupSocket(APPLICATION_PORT, m_neighborhoodHops);
+  if (m_neighborhood_socket == 0) {
+    m_neighborhood_socket = SetupSocket(APPLICATION_PORT, m_neighborhoodHops);
+  }
+
+  if (m_election_socket == 0) {
+    m_election_socket = SetupSocket(APPLICATION_PORT, m_electionNeighborhoodHops);
   }
 
   m_storage.Init(m_storageSpace);
@@ -162,32 +166,6 @@ void RhpmanApp::StartApplication() {
   m_state = State::RUNNING;
 
   SchedulePing();
-}
-
-Ptr<Socket> RhpmanApp::SetupSocket(uint16_t port, uint32_t ttl) {
-  Ptr<Socket> socket;
-
-  socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
-
-  if (ttl == 0) {
-    InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), port);
-    if (socket->Bind(local) == -1) {
-      NS_FATAL_ERROR("Failed to bind socket");
-    }
-  } else {
-    socket->Connect(InetSocketAddress(Ipv4Address::GetBroadcast(), port));
-    socket->SetAllowBroadcast(true);
-    socket->SetIpTtl(ttl);
-  }
-
-  socket->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
-
-  return socket;
-}
-
-void RhpmanApp::DestroySocket(Ptr<Socket> socket) {
-  socket->Close();
-  socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
 }
 
 // override
@@ -205,14 +183,53 @@ void RhpmanApp::StopApplication() {
     m_socket_recv = 0;
   }
 
-  if (m_socket_send != 0) {
-    DestroySocket(m_socket_send);
-    m_socket_send = 0;
+  if (m_neighborhood_socket != 0) {
+    DestroySocket(m_neighborhood_socket);
+    m_neighborhood_socket = 0;
+  }
+
+  if (m_election_socket != 0) {
+    DestroySocket(m_election_socket);
+    m_election_socket = 0;
   }
 
   // TODO: Cancel events.
 
   m_state = State::STOPPED;
+}
+
+Ptr<Socket> RhpmanApp::SetupRcvSocket(uint16_t port) {
+  Ptr<Socket> socket;
+  socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
+
+  InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), port);
+  if (socket->Bind(local) == -1) {
+    NS_FATAL_ERROR("Failed to bind socket");
+  }
+
+  socket->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
+  return socket;
+}
+
+Ptr<Socket> RhpmanApp::SetupSendSocket(uint16_t port, uint8_t ttl) {
+  Ptr<Socket> socket;
+  socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
+
+  socket->Connect(InetSocketAddress(Ipv4Address::GetBroadcast(), port));
+  socket->SetAllowBroadcast(true);
+  socket->SetIpTtl(ttl);
+
+  socket->SetRecvCallback(MakeCallback(&RhpmanApp::HandleRequest, this));
+  return socket;
+}
+
+Ptr<Socket> RhpmanApp::SetupSocket(uint16_t port, uint32_t ttl) {
+  return ttl == 0 ? SetupRcvSocket(port) : SetupSendSocket(port, ttl);
+}
+
+void RhpmanApp::DestroySocket(Ptr<Socket> socket) {
+  socket->Close();
+  socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
 }
 
 // this is public and is how any data lookup is made
@@ -299,6 +316,27 @@ Ptr<Packet> RhpmanApp::GenerateStore(const DataItem* data) {
   return GeneratePacket(message);
 }
 
+Ptr<Packet> RhpmanApp::GeneratePing(double profile) {
+  rhpman::packets::Message message;
+  message.set_id(GenerateMessageID());
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  rhpman::packets::Ping* ping = message.mutable_ping();
+  // ping.setReplicating_node(m_role == Role::REPLICATING);
+  ping->set_delivery_probability(profile);
+
+  return GeneratePacket(message);
+}
+
+Ptr<Packet> RhpmanApp::GenerateReplicaAnnouncement() {
+  rhpman::packets::Message message;
+  message.set_id(GenerateMessageID());
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  message.mutable_announce();
+  return GeneratePacket(message);
+}
+
 static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message) {
   uint32_t size = message.ByteSizeLong();
   uint8_t* payload = new uint8_t[size];
@@ -317,11 +355,18 @@ static Ptr<Packet> GeneratePacket(const rhpman::packets::Message message) {
 //  send messages
 // ================================================
 
-void RhpmanApp::SendMessage(Address dest, Ptr<Packet> packet) {
-  // std::cout << "node: " << m_address << " - " << Simulator::Now().GetSeconds() << "s\n";
-  // std::cout << "sending " << packet->GetSize() << " bytes\n";
-  // m_socket_send->SendTo(packet, 0, dest);
-  m_socket_send->Send(packet);
+// this will send to all nodes within h hops
+void RhpmanApp::BroadcastToNeighbors(Ptr<Packet> packet) { m_neighborhood_socket->Send(packet); }
+
+// this will send to all nodes within h_r hops
+void RhpmanApp::BroadcastToElection(Ptr<Packet> packet) { m_election_socket->Send(packet); }
+
+// this does not have a TTL restriction, use this for targetted messages
+void RhpmanApp::SendMessage(Ipv4Address dest, Ptr<Packet> packet) {
+  // TODO: remove this assert once the refactor is done
+  assert(dest != Ipv4Address::GetBroadcast());
+
+  m_socket_recv->SendTo(packet, 0, InetSocketAddress(dest, APPLICATION_PORT));
 }
 
 void RhpmanApp::SendProbablisticData(DataItem* data) {
@@ -334,20 +379,19 @@ void RhpmanApp::SendStartElection() {
   // just send the broadcast
 }
 
+// this will send an announcement that this node is a replica holder node
+void RhpmanApp::SendReplicationAnnouncement() {
+  Ptr<Packet> message = GenerateReplicaAnnouncement();
+  BroadcastToElection(message);
+}
+
 void RhpmanApp::SendPing() {
   // calculate profile
   // check if replicating node
   // send UDP ping to h or h_r hops
 
-  rhpman::packets::Message message;
-  message.set_id(GenerateMessageID());
-  message.set_timestamp(Simulator::Now().GetMilliSeconds());
-
-  rhpman::packets::Ping* ping = message.mutable_ping();
-  // ping.setReplicating_node(m_role == Role::REPLICATING);
-  ping->set_delivery_probability(CalculateProfile());
-
-  SendMessage(Ipv4Address::GetBroadcast(), GeneratePacket(message));
+  Ptr<Packet> message = GeneratePing(CalculateProfile());
+  BroadcastToNeighbors(message);
 }
 
 // broadcast fitness value to all nodes in h_r hops
@@ -455,12 +499,12 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
                    << " bytes from " << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                    << InetSocketAddress::ConvertFrom(from).GetPort());
 
-    // uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
+    uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
     uint32_t size = packet->GetSize();
     uint8_t* payload = new uint8_t[size];
     packet->CopyData(payload, size);
 
-    // std::cout << "received message from: " << srcAddress << "\n";
+    std::cout << "received message from: " << srcAddress << "\n";
     // parse bytes into protobuf object
 
     // switch based on message type

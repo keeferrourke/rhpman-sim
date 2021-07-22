@@ -7,7 +7,7 @@ message Message {
     uint64 timestamp = 2;
 
     oneof payload {
-        ReplicationNodeAnouncement anounce = 4;
+        ReplicationNodeAnnouncement announce = 4;
         Ping ping = 5;
         Request request = 6;
         Response response = 7;
@@ -21,7 +21,7 @@ message Message {
 message ElectionRequest {
 }
 
-message ReplicationNodeAnouncement {
+message ReplicationNodeAnnouncement {
 }
 
 message ElectionFitness {
