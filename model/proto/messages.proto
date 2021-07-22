@@ -46,15 +46,15 @@ message Request {
 }
 
 message Response {
-    //uint64 id = 1;
-    uint64 data_id = 2;
-    uint32 requestor = 3;
+    uint64 request_id = 1;
+    //uint64 data_id = 2;
+    //uint32 requestor = 3;
     DataItem data = 4;
 }
 
 message Store {
     //uint64 id = 1;
-    uint64 data_id = 2;
+    //uint64 data_id = 2;
     DataItem data = 4;
 }
 
@@ -64,6 +64,6 @@ message Transfer {
 
 message DataItem {
     uint64 data_id = 1;
-    uint32 creator = 2;
+    uint32 owner = 2;
     bytes data = 3;
 }

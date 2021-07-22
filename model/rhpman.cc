@@ -236,20 +236,9 @@ void RhpmanApp::Lookup(uint64_t id) {
     return;
   }
 
-  // ask replica holder nodes
-  if (m_replicating_nodes.size() != 0) {
-    LookupFromReplicaHolders(id);
-    return;
-  }
-
   // run semi probabilistic lookup
-  double sigma = CalculateProfile();
   uint64_t requestID = GenerateMessageID();
-
-  Ptr<Packet> message = GenerateLookup(requestID, id, sigma);
-
-  SemiProbabilisticSend(message, 0, sigma);
-  ScheduleLookupTimeout(requestID, id);
+  RunProbabilisticLookup(requestID, id, m_address);
 }
 
 // this is public and is how new data items are stored in the network
@@ -347,14 +336,18 @@ void RhpmanApp::SendToNodes(Ptr<Packet> message, const std::set<uint32_t> nodes)
 //  generate messages
 // ================================================
 
-Ptr<Packet> RhpmanApp::GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma) {
+Ptr<Packet> RhpmanApp::GenerateLookup(
+    uint64_t messageID,
+    uint64_t dataID,
+    double sigma,
+    uint32_t srcNode) {
   rhpman::packets::Message message;
   message.set_id(messageID);
   message.set_timestamp(Simulator::Now().GetMilliSeconds());
 
   rhpman::packets::Request* request = message.mutable_request();
   request->set_data_id(dataID);
-  request->set_requestor(m_address);
+  request->set_requestor(srcNode);
   request->set_sigma(sigma);
 
   return GeneratePacket(message);
@@ -369,6 +362,7 @@ Ptr<Packet> RhpmanApp::GenerateStore(const DataItem* data) {
   rhpman::packets::DataItem* item = store->mutable_data();
 
   item->set_data_id(data->getID());
+  item->set_owner(data->getOwner());
   item->set_data(data->getPayload(), data->getSize());
 
   return GeneratePacket(message);
@@ -417,7 +411,7 @@ Ptr<Packet> RhpmanApp::GenerateModeChange(uint32_t newNode) {
   return GeneratePacket(message);
 }
 
-Ptr<Packet> RhpmanApp::GenerateTransfer(const std::vector<DataItem*> items) {
+Ptr<Packet> RhpmanApp::GenerateTransfer(std::vector<DataItem*> items) {
   rhpman::packets::Message message;
   message.set_id(GenerateMessageID());
   message.set_timestamp(Simulator::Now().GetMilliSeconds());
@@ -428,8 +422,25 @@ Ptr<Packet> RhpmanApp::GenerateTransfer(const std::vector<DataItem*> items) {
     rhpman::packets::DataItem* item = transfer->add_items();
 
     item->set_data_id((*it)->getID());
+    item->set_owner((*it)->getOwner());
     item->set_data((*it)->getPayload(), (*it)->getSize());
   }
+
+  return GeneratePacket(message);
+}
+
+Ptr<Packet> RhpmanApp::GenerateResponse(uint64_t responseTo, const DataItem* data) {
+  rhpman::packets::Message message;
+  message.set_id(GenerateMessageID());
+  message.set_timestamp(Simulator::Now().GetMilliSeconds());
+
+  rhpman::packets::Response* response = message.mutable_response();
+  response->set_request_id(responseTo);
+
+  rhpman::packets::DataItem* item = response->mutable_data();
+  item->set_data_id(data->getID());
+  item->set_owner(data->getOwner());
+  item->set_data(data->getPayload(), data->getSize());
 
   return GeneratePacket(message);
 }
@@ -454,10 +465,10 @@ static rhpman::packets::Message ParsePacket(const Ptr<Packet> packet) {
   packet->CopyData(payload, size);
 
   rhpman::packets::Message message;
-  bool status = message.ParseFromArray(payload, size);
+  message.ParseFromArray(payload, size);
   delete[] payload;
 
-  return status ? message : NULL;
+  return message;
 }
 
 // ================================================
@@ -514,8 +525,9 @@ void RhpmanApp::SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dat
   // send direct message to peer
 }
 
-void RhpmanApp::SendSyncResponse(uint64_t requestID, uint32_t nodeID, DataItem* data) {
-  // send direct message to peer
+void RhpmanApp::SendResponse(uint64_t requestID, uint32_t nodeID, const DataItem* data) {
+  Ptr<Packet> message = GenerateResponse(requestID, data);
+  SendMessage(Ipv4Address(nodeID), message);
 }
 
 // ================================================
@@ -607,13 +619,7 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
     uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
     rhpman::packets::Message message = ParsePacket(packet);
 
-    if (message == NULL) {
-      NS_LOG_ERROR("Failed to parse the packet, cant proccess it");
-      return;
-    }
-
     // switch based on message type
-
     if (message.has_announce()) {
       HandleReplicationAnnouncement(srcAddress);
     } else if (message.has_ping()) {
@@ -628,11 +634,16 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
       HandleElectionFitness(srcAddress, message.fitness().fitness());
     } else if (message.has_store()) {
       // TODO: implement storage handler
+
     } else if (message.has_request()) {
-      // TODO: implement lookup handler
+      HandleLookup(message.request().requestor(), message.id(), message.request().data_id());
     } else if (message.has_response()) {
       // TODO: handle lookup response
+    } else if (message.has_transfer()) {
+      // TODO: handle transfer
+      message.transfer();
     } else {
+      std::cout << "handling message: other\n";
       NS_LOG_WARN("unknown message type");
     }
   }
@@ -669,6 +680,11 @@ void RhpmanApp::HandleModeChange(uint32_t oldNode, uint32_t newNode) {
     m_replicating_nodes.insert(newNode);
   } else if (newNode == 0) {
     m_replicating_nodes.erase(oldNode);
+
+    if (m_replicating_nodes.size() == 0) {
+      TriggerElection();
+    }
+
   } else {
     m_replicating_nodes.erase(oldNode);
     m_replicating_nodes.insert(newNode);
@@ -689,14 +705,16 @@ void RhpmanApp::HandleElectionFitness(uint32_t nodeID, double fitness) {
   m_peerFitness[nodeID] = fitness;
 }
 
-void RhpmanApp::HandleSyncLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID) {
+void RhpmanApp::HandleLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID) {
   DataItem* res = CheckLocalStorage(dataID);
 
   if (res != NULL) {
-    return SendSyncResponse(requestID, nodeID, res);
+    SendResponse(requestID, nodeID, res);
+    return;
   }
 
-  // if not found do nothing, let the client timeout??
+  // I dont have the answer but ask other nodes if they have it
+  RunProbabilisticLookup(requestID, dataID, nodeID);
 }
 
 // this will handle the synchonous store message
@@ -735,6 +753,21 @@ void RhpmanApp::HandleProbabalisticStore(uint32_t nodeID, DataItem* data) {
 //   helpers
 // ================================================
 
+void RhpmanApp::RunProbabilisticLookup(uint64_t requestID, uint64_t dataID, uint32_t srcNode) {
+  // ask replica holder nodes
+  if (m_replicating_nodes.size() != 0) {
+    LookupFromReplicaHolders(dataID, requestID, srcNode);
+    return;
+  }
+
+  // run semi probabilistic lookup
+  double sigma = CalculateProfile();
+  Ptr<Packet> message = GenerateLookup(requestID, dataID, sigma, srcNode);
+
+  SemiProbabilisticSend(message, srcNode, sigma);
+  ScheduleLookupTimeout(requestID, dataID);
+}
+
 void RhpmanApp::RunElection() {
   m_min_election_time = Simulator::Now() + m_election_cooldown;
 
@@ -768,13 +801,13 @@ void RhpmanApp::MakeNonReplicaHolderNode() {
 }
 
 // this will send the synchonous data lookup requests to all of the known replica holder nodes
-void RhpmanApp::LookupFromReplicaHolders(uint64_t dataID) {
-  // create lookup message (use the same ID for each message sent)
-  uint64_t requestID = RhpmanApp::GenerateMessageID();
-
-  Ptr<Packet> message = GenerateLookup(requestID, dataID, m_forwardingThreshold);
+void RhpmanApp::LookupFromReplicaHolders(uint64_t dataID, uint64_t requestID, uint32_t srcNode) {
+  Ptr<Packet> message = GenerateLookup(requestID, dataID, 0, srcNode);
   SendToNodes(message, m_replicating_nodes);
-  ScheduleLookupTimeout(requestID, dataID);
+
+  if (srcNode == m_address) {
+    ScheduleLookupTimeout(requestID, dataID);
+  }
 }
 
 // this will generate the ID value to use for the requests this is a static function that should be

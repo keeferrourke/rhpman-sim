@@ -40,6 +40,7 @@ def build(bld):
         'model/dataItem.h',
       #  'model/util.h',
         'helper/rhpman-helper.h',
+       # 'model/proto/messages.proto',
       #  'model/messages.pb.h',
         ]
 

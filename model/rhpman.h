@@ -157,7 +157,7 @@ class RhpmanApp : public Application {
   void SendRoleChange(uint32_t newReplicationNode);
   void SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dataID);
   void SendSyncStore(uint32_t nodeID, DataItem* data);
-  void SendSyncResponse(uint64_t requestID, uint32_t nodeID, DataItem* data);
+  void SendResponse(uint64_t requestID, uint32_t nodeID, const DataItem* data);
 
   // schedulers
   void ScheduleElectionCheck();
@@ -172,7 +172,7 @@ class RhpmanApp : public Application {
   void RunElection();
   void MakeReplicaHolderNode();
   void MakeNonReplicaHolderNode();
-  void LookupFromReplicaHolders(uint64_t dataID);
+  void LookupFromReplicaHolders(uint64_t dataID, uint64_t requestID, uint32_t srcNode);
   uint32_t GetID();
   static uint64_t GenerateMessageID();
   void ResetFitnesses();
@@ -190,6 +190,7 @@ class RhpmanApp : public Application {
   RhpmanApp::Role GetNewRole();
   void ChangeRole(Role newRole);
   void CancelEventMap(std::map<uint32_t, EventId> events);
+  void RunProbabilisticLookup(uint64_t requestID, uint64_t dataID, uint32_t srcNode);
 
   void DestroySocket(Ptr<Socket> socket);
 
@@ -208,18 +209,19 @@ class RhpmanApp : public Application {
   void HandleModeChange(uint32_t oldNode, uint32_t newNode);
   void HandleElectionRequest();
   void HandleElectionFitness(uint32_t nodeID, double fitness);
-  void HandleSyncLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID);
+  void HandleLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID);
   void HandleStore(DataItem* data);
   void HandleProbabalisticStore(uint32_t nodeID, DataItem* data);
 
   // message generators
-  Ptr<Packet> GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma);
+  Ptr<Packet> GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma, uint32_t srcNode);
   Ptr<Packet> GenerateStore(const DataItem* data);
   Ptr<Packet> GeneratePing(double profile);
   Ptr<Packet> GenerateReplicaAnnouncement();
   Ptr<Packet> GenerateElectionRequest();
   Ptr<Packet> GenerateModeChange(uint32_t newNode);
-  Ptr<Packet> GenerateTransfer(const std::vector<DataItem*> items);
+  Ptr<Packet> GenerateTransfer(std::vector<DataItem*> items);
+  Ptr<Packet> GenerateResponse(uint64_t responseTo, const DataItem* data);
 
   // data storage for the node
   uint32_t m_storageSpace;
