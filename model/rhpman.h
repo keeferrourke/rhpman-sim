@@ -192,7 +192,7 @@ class RhpmanApp : public Application {
   void CancelEventMap(std::map<uint32_t, EventId> events);
   void RunProbabilisticLookup(uint64_t requestID, uint64_t dataID, uint32_t srcNode);
   bool CheckDuplicateMessage(uint64_t messageID);
-
+  bool IsResponsePending(uint64_t requestID);
   void DestroySocket(Ptr<Socket> socket);
 
   void SemiProbabilisticSend(Ptr<Packet> message, uint32_t srcAddr, double sigma);
@@ -211,9 +211,9 @@ class RhpmanApp : public Application {
   void HandleElectionRequest();
   void HandleElectionFitness(uint32_t nodeID, double fitness);
   void HandleLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID);
-  void HandleStore(DataItem* data);
-  void HandleProbabalisticStore(uint32_t nodeID, DataItem* data);
+  void HandleStore(uint32_t nodeID, DataItem* data, Ptr<Packet> message);
   uint32_t HandleTransfer(std::vector<DataItem*> data);
+  void HandleResponse(uint64_t requestID, DataItem* data);
 
   // message generators
   Ptr<Packet> GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma, uint32_t srcNode);

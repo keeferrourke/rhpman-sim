@@ -521,10 +521,6 @@ void RhpmanApp::SendRoleChange(uint32_t newReplicationNode) {
   BroadcastToElection(message);
 }
 
-void RhpmanApp::SendSyncLookup(uint64_t requestID, uint32_t nodeID, uint64_t dataID) {
-  // send direct message to peer
-}
-
 void RhpmanApp::SendResponse(uint64_t requestID, uint32_t nodeID, const DataItem* data) {
   Ptr<Packet> message = GenerateResponse(requestID, data);
   SendMessage(Ipv4Address(nodeID), message);
@@ -638,12 +634,15 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
     } else if (message.has_fitness()) {
       HandleElectionFitness(srcAddress, message.fitness().fitness());
     } else if (message.has_store()) {
-      // TODO: implement storage handler
-
+      rhpman::packets::DataItem item = message.store().data();
+      HandleStore(srcAddress, new DataItem(item.data_id(), item.owner(), item.data()), packet);
     } else if (message.has_request()) {
       HandleLookup(message.request().requestor(), message.id(), message.request().data_id());
     } else if (message.has_response()) {
-      // TODO: handle lookup response
+      rhpman::packets::DataItem item = message.response().data();
+      HandleResponse(
+          message.response().request_id(),
+          new DataItem(item.data_id(), item.owner(), item.data()));
     } else if (message.has_transfer()) {
       std::vector<DataItem*> items;
 
@@ -728,19 +727,6 @@ void RhpmanApp::HandleLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataI
   RunProbabilisticLookup(requestID, dataID, nodeID);
 }
 
-// this will handle the synchonous store message
-// if the node is a replicating node then it will be stored in storage, and stored in the buffer
-// otherwise
-void RhpmanApp::HandleStore(DataItem* data) {
-  Storage storage = m_role == Role::REPLICATING ? m_storage : m_buffer;
-
-  bool res = storage.StoreItem(data);
-  if (!res) {
-    NS_LOG_DEBUG("not enough space to store the data item");
-  }
-}
-
-// store in storage if replicating node, otherwise store in the buffer
 uint32_t RhpmanApp::HandleTransfer(std::vector<DataItem*> data) {
   Storage storage = m_role == Role::REPLICATING ? m_storage : m_buffer;
 
@@ -755,29 +741,41 @@ uint32_t RhpmanApp::HandleTransfer(std::vector<DataItem*> data) {
   return stored;
 }
 
-void RhpmanApp::HandleProbabalisticStore(uint32_t nodeID, DataItem* data) {
+void RhpmanApp::HandleStore(uint32_t nodeID, DataItem* data, Ptr<Packet> message) {
   // check to see if the node already has the data item in the buffer
   if (CheckLocalStorage(data->getID()) != NULL) return;
 
   // if it is a replicating node store the data item
   if (m_role == Role::REPLICATING) {
-    bool res = m_storage.StoreItem(data);
-    if (!res) {
+    if (!m_storage.StoreItem(data)) {
       NS_LOG_DEBUG("not enough space to store the data item");
     }
     return;
   }
 
-  // store in the buffer if there is space
-  bool res = m_buffer.StoreItem(data);
-  if (!res) {
-    NS_LOG_DEBUG("not enough space in the buffer to store the data item");
+  SemiProbabilisticSend(message, nodeID, m_forwardingThreshold);
+
+  if (CalculateProfile() > m_carryingThreshold) {
+    if (!m_buffer.StoreItem(data)) {
+      NS_LOG_DEBUG("not enough space in the buffer to store the data item");
+    }
+  }
+}
+
+void RhpmanApp::HandleResponse(uint64_t requestID, DataItem* data) {
+  if (IsResponsePending(requestID)) {
+    m_pendingLookups.erase(requestID);
+    if (!m_success.IsNull()) m_success(data);
   }
 }
 
 // ================================================
 //   helpers
 // ================================================
+
+bool RhpmanApp::IsResponsePending(uint64_t requestID) {
+  return m_pendingLookups.find(requestID) != m_pendingLookups.end();
+}
 
 bool RhpmanApp::CheckDuplicateMessage(uint64_t messageID) {
   // true if it is in the list
@@ -934,15 +932,12 @@ double RhpmanApp::CalculateColocation() {
 void RhpmanApp::LookupTimeout(uint64_t requestID) {
   NS_LOG_FUNCTION(this);
 
-  // check to see if it is still in the pending lookup list
-  std::set<uint64_t>::iterator it = m_pendingLookups.find(requestID);
-  std::map<uint64_t, uint64_t>::iterator mapping;
+  if (IsResponsePending(requestID)) {
+    std::map<uint64_t, uint64_t>::iterator dataMapping;
+    dataMapping = m_lookupMapping.find(requestID);
+    m_pendingLookups.erase(requestID);
 
-  if (it != m_pendingLookups.end()) {
-    mapping = m_lookupMapping.find(requestID);
-
-    if (!m_failed.IsNull()) m_failed(mapping->second);
-    m_pendingLookups.erase(it);
+    if (!m_failed.IsNull()) m_failed(dataMapping->second);
   }
 }
 
