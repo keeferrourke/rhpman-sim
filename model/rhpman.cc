@@ -619,6 +619,11 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
     uint32_t srcAddress = InetSocketAddress::ConvertFrom(from).GetIpv4().Get();
     rhpman::packets::Message message = ParsePacket(packet);
 
+    if (CheckDuplicateMessage(message.id())) {
+      NS_LOG_INFO("already received this message, dropping.");
+      return;
+    }
+
     // switch based on message type
     if (message.has_announce()) {
       HandleReplicationAnnouncement(srcAddress);
@@ -640,8 +645,14 @@ void RhpmanApp::HandleRequest(Ptr<Socket> socket) {
     } else if (message.has_response()) {
       // TODO: handle lookup response
     } else if (message.has_transfer()) {
-      // TODO: handle transfer
-      message.transfer();
+      std::vector<DataItem*> items;
+
+      for (int i = 0; i < message.transfer().items_size(); i++) {
+        rhpman::packets::DataItem item = message.transfer().items(i);
+        items.push_back(new DataItem(item.data_id(), item.owner(), item.data()));
+      }
+
+      HandleTransfer(items);
     } else {
       std::cout << "handling message: other\n";
       NS_LOG_WARN("unknown message type");
@@ -729,6 +740,21 @@ void RhpmanApp::HandleStore(DataItem* data) {
   }
 }
 
+// store in storage if replicating node, otherwise store in the buffer
+uint32_t RhpmanApp::HandleTransfer(std::vector<DataItem*> data) {
+  Storage storage = m_role == Role::REPLICATING ? m_storage : m_buffer;
+
+  uint32_t stored = 0;
+  for (std::vector<DataItem*>::iterator it = data.begin(); it != data.end(); ++it) {
+    if (!storage.StoreItem(*it)) {
+      NS_LOG_DEBUG("not enough space to store all the items");
+      break;
+    }
+    stored++;
+  }
+  return stored;
+}
+
 void RhpmanApp::HandleProbabalisticStore(uint32_t nodeID, DataItem* data) {
   // check to see if the node already has the data item in the buffer
   if (CheckLocalStorage(data->getID()) != NULL) return;
@@ -752,6 +778,14 @@ void RhpmanApp::HandleProbabalisticStore(uint32_t nodeID, DataItem* data) {
 // ================================================
 //   helpers
 // ================================================
+
+bool RhpmanApp::CheckDuplicateMessage(uint64_t messageID) {
+  // true if it is in the list
+  bool status = m_received_messages.find(messageID) != m_received_messages.end();
+  m_received_messages.insert(messageID);
+
+  return status;
+}
 
 void RhpmanApp::RunProbabilisticLookup(uint64_t requestID, uint64_t dataID, uint32_t srcNode) {
   // ask replica holder nodes

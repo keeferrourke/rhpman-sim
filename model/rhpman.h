@@ -191,6 +191,7 @@ class RhpmanApp : public Application {
   void ChangeRole(Role newRole);
   void CancelEventMap(std::map<uint32_t, EventId> events);
   void RunProbabilisticLookup(uint64_t requestID, uint64_t dataID, uint32_t srcNode);
+  bool CheckDuplicateMessage(uint64_t messageID);
 
   void DestroySocket(Ptr<Socket> socket);
 
@@ -212,6 +213,7 @@ class RhpmanApp : public Application {
   void HandleLookup(uint32_t nodeID, uint64_t requestID, uint64_t dataID);
   void HandleStore(DataItem* data);
   void HandleProbabalisticStore(uint32_t nodeID, DataItem* data);
+  uint32_t HandleTransfer(std::vector<DataItem*> data);
 
   // message generators
   Ptr<Packet> GenerateLookup(uint64_t messageID, uint64_t dataID, double sigma, uint32_t srcNode);
@@ -245,6 +247,8 @@ class RhpmanApp : public Application {
 
   double m_myFitness;
   std::set<uint32_t> m_replicating_nodes;
+
+  std::set<uint64_t> m_received_messages;
 };
 
 };  // namespace rhpman
